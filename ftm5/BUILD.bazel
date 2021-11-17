@@ -16,7 +16,8 @@ kernel_module(
         "Kbuild",
     ]) + [
         "//gs/google-modules/touch/common:headers",
-        "//gs/google-modules/display/samsung:headers",
+        "//gs/google-modules/display:headers",
+        "//gs/kernel/device-modules:gs101_soc_headers",
     ],
     outs = [
         "ftm5.ko",
