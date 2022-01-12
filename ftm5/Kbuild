@@ -1,4 +1,4 @@
-# FTM5 support
+# SPDX-License-Identifier: GPL-2.0
 
 ccflags-y += -I$(srctree)/../gs/google-modules/display
 ccflags-y += -I$(srctree)/../gs/google-modules/display/include/uapi
