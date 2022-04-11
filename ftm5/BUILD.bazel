@@ -14,7 +14,7 @@ filegroup(
         "Kconfig",
     ]),
     visibility = [
-        "//gs/google-modules/soc-modules:__pkg__",
+        "//private/google-modules/soc/gs:__pkg__",
     ],
 )
 
@@ -25,19 +25,19 @@ kernel_module(
         "**/*.h",
         "Kbuild",
     ]) + [
-        "//gs/google-modules/touch/common:headers",
-        "//gs/google-modules/display:headers",
-        "//gs/google-modules/display/include:headers",
-        "//gs/google-modules/soc-modules:gs101_soc_headers",
+        "//private/google-modules/touch/common:headers",
+        "//private/google-modules/display:headers",
+        "//private/google-modules/display/include:headers",
+        "//private/google-modules/soc/gs:gs101_soc_headers",
     ],
     outs = [
         "ftm5.ko",
     ],
-    kernel_build = "//gs/google-modules/soc-modules:slider",
+    kernel_build = "//private/google-modules/soc/gs:slider",
     kernel_module_deps = [
-        "//gs/google-modules/touch/common:common.slider",
+        "//private/google-modules/touch/common:common.slider",
     ],
     visibility = [
-        "//gs/google-modules/soc-modules:__pkg__",
+        "//private/google-modules/soc/gs:__pkg__",
     ],
 )
