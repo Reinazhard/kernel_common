@@ -483,6 +483,7 @@ static void dhd_ifadd_event_handler(void *handle, void *event_info, u8 event);
 static void dhd_ifdel_event_handler(void *handle, void *event_info, u8 event);
 static void dhd_set_mac_addr_handler(void *handle, void *event_info, u8 event);
 static void dhd_set_mcast_list_handler(void *handle, void *event_info, u8 event);
+static void dhd_ndev_upd_features_handler(void *handle, void *event_info, u8 event);
 #ifdef BCM_ROUTER_DHD
 static void dhd_inform_dhd_monitor_handler(void *handle, void *event_info, u8 event);
 #endif
@@ -3430,6 +3431,43 @@ dhd_set_mac_addr_handler(void *handle, void *event_info, u8 event)
 done:
 	DHD_OS_WAKE_UNLOCK(&dhd->pub);
 	dhd_net_if_unlock_local(dhd);
+}
+
+static void
+dhd_ndev_upd_features_handler(void *handle, void *event_info, u8 event)
+{
+	struct net_device *net = event_info;
+	dhd_info_t *dhd = DHD_DEV_INFO(net);
+
+	if (event != DHD_WQ_WORK_NDEV_UPD_FEATURES) {
+		DHD_ERROR(("%s: unexpected event \n", __FUNCTION__));
+		return;
+	}
+	if (!net) {
+		DHD_ERROR(("%s: event data is null \n", __FUNCTION__));
+		return;
+	}
+	/* Exit if dhd_stop is in progress which will be called with rtnl_lock */
+	while (!rtnl_trylock()) {
+		if (dhd->pub.stop_in_progress) {
+			DHD_PRINT(("%s: exit as dhd_stop in progress\n", __FUNCTION__));
+			return;
+		}
+		/* wait for 20msec and retry rtnl_lock */
+		DHD_PRINT(("%s: rtnl_lock held mostly by dhd_open, wait\n", __FUNCTION__));
+		OSL_SLEEP(50);
+	}
+	DHD_PRINT(("%s: netdev_update_features\n", __FUNCTION__));
+	netdev_update_features(net);
+	rtnl_unlock();
+}
+
+static void
+dhd_ndev_upd_features(dhd_info_t *dhd, struct net_device *net)
+{
+	dhd_deferred_schedule_work(dhd->dhd_deferred_wq, (void *)net,
+		DHD_WQ_WORK_NDEV_UPD_FEATURES, dhd_ndev_upd_features_handler,
+		DHD_WQ_WORK_PRIORITY_HIGH);
 }
 
 static void
@@ -7205,19 +7243,7 @@ dhd_open(struct net_device *net)
 #endif /* DHD_LB_TXP */
 		dhd->dhd_lb_candidacy_override = FALSE;
 #endif /* DHD_LB */
-		/* Exit if dhd_stop is in progress which will be called with rtnl_lock */
-		while (!rtnl_trylock()) {
-			if (dhd->pub.stop_in_progress) {
-				DHD_PRINT(("%s: exit as dhd_stop in progress\n", __FUNCTION__));
-				return;
-			}
-			/* wait for 20msec and retry rtnl_lock */
-			DHD_PRINT(("%s: rtnl_lock held, wait\n", __FUNCTION__));
-			OSL_SLEEP(20);
-		}
-		DHD_PRINT(("%s: netdev_update_features\n", __FUNCTION__));
-		netdev_update_features(net);
-		rtnl_unlock();
+		dhd_ndev_upd_features(dhd, net);
 #ifdef DHD_PM_OVERRIDE
 		g_pm_override = FALSE;
 #endif /* DHD_PM_OVERRIDE */
