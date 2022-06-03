@@ -68,5 +68,7 @@ obj-$(CONFIG_PKVM_S2MPU)		+= pkvm-s2mpu/pkvm-s2mpu/
 
 obj-$(CONFIG_PKVM_S2MPU_V9) 		+= pkvm-s2mpu/pkvm-s2mpu-v9/
 
+obj-$(CONFIG_BOOT_CONTROL)	 	+= boot_control/
+
 # perf_trace_counters
 obj-$(CONFIG_PERF_TRACE_CTRS)		+= perf_trace_counters.o
