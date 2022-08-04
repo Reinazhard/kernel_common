@@ -893,7 +893,6 @@ wl_release_vif_macaddr(struct bcm_cfg80211 *cfg, u8 *mac_addr, u16 wl_iftype)
 #ifdef WL_NAN
 	if (!((cfg->nancfg->mac_rand) && (wl_iftype == WL_IF_TYPE_NAN)))
 #endif /* WL_NAN */
-#line 902
 	{
 		/* Fetch last two bytes of mac address */
 		org_toggle_bytes = ntoh16(*((u16 *)&ndev->dev_addr[4]));
@@ -901,14 +900,14 @@ wl_release_vif_macaddr(struct bcm_cfg80211 *cfg, u8 *mac_addr, u16 wl_iftype)
 
 		toggled_bit = (org_toggle_bytes ^ cur_toggle_bytes);
 		WL_DBG(("org_toggle_bytes:%04X cur_toggle_bytes:%04X\n",
-					org_toggle_bytes, cur_toggle_bytes));
+			org_toggle_bytes, cur_toggle_bytes));
 		if (toggled_bit & cfg->vif_macaddr_mask) {
 			/* This toggled_bit is marked in the used mac addr
 			 * mask. Clear it.
 			 */
 			cfg->vif_macaddr_mask &= ~toggled_bit;
-			WL_INFORM(("MAC address - "
-				MACDBG " released. toggled_bit:%04X vif_mask:%04X\n",
+			WL_INFORM(("MAC address - " MACDBG " released. toggled_bit:%04X"
+				" vif_mask:%04X\n",
 				MAC2STRDBG(mac_addr), toggled_bit, cfg->vif_macaddr_mask));
 		} else {
 			WL_ERR(("MAC address - " MACDBG " not found in the used list."

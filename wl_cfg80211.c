@@ -289,12 +289,7 @@ static const struct ieee80211_iface_limit common_if_limits[] = {
 	/*
 	 * During P2P-GO removal, P2P-GO is first changed to STA and later only
 	 * removed. So setting maximum possible number of STA interfaces according
-	 * to kernel version.
-	 *
-	 * less than linux-3.8 - max:3 (wlan0 + p2p0 + group removal of p2p-p2p0-x)
-	 * linux-3.8 and above - max:4
-	 * sta + NAN NMI + NAN DPI open + NAN DPI sec (since there is no iface type
-	 * for NAN defined, registering it as STA type)
+	 *  to kernel version. (2 sta + 1 sta for iface downgrade from ap)
 	 */
 	.max = 4,
 	.types = BIT(NL80211_IFTYPE_STATION),

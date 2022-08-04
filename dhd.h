@@ -4632,4 +4632,8 @@ extern uint32 dhd_get_concurrent_capabilites(dhd_pub_t *dhd);
 #endif
 int dhd_config_rts_in_suspend(dhd_pub_t *dhdp, bool suspend);
 #endif /* DHD_CUSTOM_CONFIG_RTS_IN_SUSPEND */
+
+extern void dhd_unregister_net(struct net_device *net, bool need_rtnl_lock);
+extern int dhd_register_net(struct net_device *net, bool need_rtnl_lock);
+
 #endif /* _dhd_h_ */
