@@ -7205,7 +7205,13 @@ dhd_open(struct net_device *net)
 #endif /* DHD_LB_TXP */
 		dhd->dhd_lb_candidacy_override = FALSE;
 #endif /* DHD_LB */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+	rtnl_lock();
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)) */
 		netdev_update_features(net);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+	rtnl_unlock();
+#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)) */
 #ifdef DHD_PM_OVERRIDE
 		g_pm_override = FALSE;
 #endif /* DHD_PM_OVERRIDE */
