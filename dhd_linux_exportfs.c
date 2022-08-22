@@ -119,13 +119,16 @@ exit:
 void
 dhd_dbg_ring_proc_create(dhd_pub_t *dhdp)
 {
+	dhd_info_t *dhd = (dhd_info_t*)dhdp->info;
+
 #ifdef DEBUGABILITY
 	dhd_dbg_ring_t *dbg_verbose_ring = NULL;
 
 	dbg_verbose_ring = dhd_dbg_get_ring_from_ring_id(dhdp, FW_VERBOSE_RING_ID);
 	if (dbg_verbose_ring) {
-		if (!proc_create_data("dhd_trace", S_IRUSR, NULL, &dhd_ring_proc_ops,
-			dbg_verbose_ring)) {
+		dhd->dhd_trace_proc = proc_create_data("dhd_trace", S_IRUSR, NULL,
+			&dhd_ring_proc_ops, dbg_verbose_ring);
+		if (!dhd->dhd_trace_proc) {
 			DHD_ERROR(("Failed to create /proc/dhd_trace procfs interface\n"));
 		} else {
 			DHD_INFO(("Created /proc/dhd_trace procfs interface\n"));
@@ -136,8 +139,9 @@ dhd_dbg_ring_proc_create(dhd_pub_t *dhdp)
 #endif /* DEBUGABILITY */
 
 #ifdef EWP_ECNTRS_LOGGING
-	if (!proc_create_data("dhd_ecounters", S_IRUSR, NULL, &dhd_ring_proc_ops,
-		dhdp->ecntr_dbg_ring)) {
+	dhd->dhd_ecounters_proc = proc_create_data("dhd_ecounters", S_IRUSR, NULL,
+		&dhd_ring_proc_ops, dhdp->ecntr_dbg_ring);
+	if (!dhd->dhd_ecounters_proc) {
 		DHD_ERROR(("Failed to create /proc/dhd_ecounters procfs interface\n"));
 	} else {
 		DHD_INFO(("Created /proc/dhd_ecounters procfs interface\n"));
@@ -145,8 +149,9 @@ dhd_dbg_ring_proc_create(dhd_pub_t *dhdp)
 #endif /* EWP_ECNTRS_LOGGING */
 
 #ifdef EWP_RTT_LOGGING
-	if (!proc_create_data("dhd_rtt", S_IRUSR, NULL, &dhd_ring_proc_ops,
-		dhdp->rtt_dbg_ring)) {
+	dhd->dhd_rtt_proc = proc_create_data("dhd_rtt", S_IRUSR, NULL, &dhd_ring_proc_ops,
+		dhdp->rtt_dbg_ring);
+	if (!dhd->dhd_rtt_proc) {
 		DHD_ERROR(("Failed to create /proc/dhd_rtt procfs interface\n"));
 	} else {
 		DHD_INFO(("Created /proc/dhd_rtt procfs interface\n"));
@@ -157,18 +162,37 @@ dhd_dbg_ring_proc_create(dhd_pub_t *dhdp)
 void
 dhd_dbg_ring_proc_destroy(dhd_pub_t *dhdp)
 {
+	dhd_info_t *dhd = (dhd_info_t*)dhdp->info;
 #ifdef DEBUGABILITY
-	remove_proc_entry("dhd_trace", NULL);
+	if (dhd->dhd_trace_proc) {
+		remove_proc_entry("dhd_trace", NULL);
+	}
 #endif /* DEBUGABILITY */
 
 #ifdef EWP_ECNTRS_LOGGING
-	remove_proc_entry("dhd_ecounters", NULL);
+	if (dhd->dhd_ecounters_proc) {
+		remove_proc_entry("dhd_ecounters", NULL);
+	}
 #endif /* EWP_ECNTRS_LOGGING */
 
 #ifdef EWP_RTT_LOGGING
-	remove_proc_entry("dhd_rtt", NULL);
+	if (dhd->dhd_rtt_proc) {
+		remove_proc_entry("dhd_rtt", NULL);
+	}
 #endif /* EWP_RTT_LOGGING */
 
+#ifdef EWP_EVENTTS_LOG
+	if (dhd->dhd_eventts_proc) {
+		remove_proc_entry("dhd_eventts", NULL);
+	}
+#endif /* EWP_EVENTTS_LOG */
+
+#ifdef DHD_PCIE_WRAPPER_DUMP
+	if (dhd->dhd_wrapper_dump_proc) {
+		remove_proc_entry("dhd_wrapper_dump", NULL);
+	}
+#endif /* DHD_PCIE_WRAPPER_DUMP */
+	BCM_REFERENCE(dhd);
 }
 #endif /* SHOW_LOGTRACE */
 
@@ -3017,6 +3041,7 @@ int dhd_sysfs_init(dhd_info_t *dhd)
 	 * was added to the system.
 	 */
 	kobject_uevent(&dhd->dhd_kobj, KOBJ_ADD);
+	dhd->dhd_kobj_inited = TRUE;
 
 #ifdef DHD_LB
 	ret  = kobject_init_and_add(&dhd->dhd_lb_kobj,
@@ -3028,6 +3053,7 @@ int dhd_sysfs_init(dhd_info_t *dhd)
 	}
 
 	kobject_uevent(&dhd->dhd_lb_kobj, KOBJ_ADD);
+	dhd->dhd_lb_kobj_inited = TRUE;
 #endif /* DHD_LB */
 
 	/* DPC bounds */
@@ -3039,6 +3065,8 @@ int dhd_sysfs_init(dhd_info_t *dhd)
 		return ret;
 	}
 	kobject_uevent(&dhd->dhd_dpc_bounds_kobj, KOBJ_ADD);
+	dhd->dhd_dpc_bounds_kobj_inited = TRUE;
+
 	return ret;
 }
 
@@ -3051,14 +3079,23 @@ void dhd_sysfs_exit(dhd_info_t *dhd)
 	}
 
 #ifdef DHD_LB
-	kobject_put(&dhd->dhd_lb_kobj);
+	if (dhd->dhd_lb_kobj_inited) {
+		kobject_put(&dhd->dhd_lb_kobj);
+		dhd->dhd_lb_kobj_inited = FALSE;
+	}
 #endif /* DHD_LB */
 
 	/* DPC bounds */
-	kobject_put(&dhd->dhd_dpc_bounds_kobj);
+	if (dhd->dhd_dpc_bounds_kobj_inited) {
+		kobject_put(&dhd->dhd_dpc_bounds_kobj);
+		dhd->dhd_dpc_bounds_kobj_inited = FALSE;
+	}
 
 	/* Release the kobject */
-	kobject_put(&dhd->dhd_kobj);
+	if (dhd->dhd_kobj_inited) {
+		kobject_put(&dhd->dhd_kobj);
+		dhd->dhd_kobj_inited = FALSE;
+	}
 }
 
 #ifdef DHD_SUPPORT_HDM

@@ -6239,7 +6239,7 @@ dhd_priv_cmd_process_locked(struct net_device *net,
 		* takes care of trimming the length to DHD_IOCTL_MAXLEN/MAXLEN_32K. So that DHD
 		* will not overflow the buffer size while updating the buffer.
 		*/
-		buflen = MIN(ioc.len, DHD_IOCTL_MAXLEN_48K);
+		buflen = MIN(ioc.len, DHD_IOCTL_MAXLEN_32K);
 		if (!(local_buf = MALLOC(dhd->pub.osh, buflen+1))) {
 			bcmerror = BCME_NOMEM;
 			goto done;
