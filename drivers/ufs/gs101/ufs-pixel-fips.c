@@ -5,7 +5,7 @@
  * Copyright 2021 Google LLC
  *
  * Authors: Konstantin Vyshetsky <vkon@google.com>
- *
+ * Version: 1.0.0
  */
 
 #include <linux/delay.h>
@@ -15,22 +15,12 @@
 #include <linux/module.h>
 #include <asm/unaligned.h>
 #include <scsi/scsi_proto.h>
-#include "ufs-exynos-gs.h"
-#include "ufs-pixel-fips.h"
-#include "ufs-pixel-fips_sha256.h"
-
-#undef CREATE_TRACE_POINTS
-#include <trace/hooks/ufshcd.h>
+#include "../ufs-exynos-gs.h"
+#include "../ufs-pixel-fips.h"
+#include "../ufs-pixel-fips_sha256.h"
 
 #undef pr_fmt
 #define pr_fmt(fmt) "ufs-pixel-fips140: " fmt
-
-/*
- * FIPS140-3 requires module name and version information to be available. These
- * values will be logged to kernel log upon loading.
- */
-#define UFS_PIXEL_FIPS140_MODULE_NAME "UFS Pixel FIPS CMVP Module"
-#define UFS_PIXEL_FIPS140_MODULE_VERSION "1.2.0"
 
 /*
  * As the verification logic will run before GPT data is available, module
@@ -48,8 +38,6 @@ MODULE_PARM_DESC(fips_lu, "FIPS partition LUN");
 
 #define UFS_PIXEL_UCD_SIZE		(4096)
 #define UFS_PIXEL_BUFFER_SIZE		(4096)
-#define UFS_PIXEL_CRYPTO_DATA_UNIT_SIZE (4096)
-#define UFS_PIXEL_MASTER_KEY_INDEX	(15)
 #define UTRD_CMD_TYPE_UFS_STORAGE	(1 << 28)
 #define UTRD_DD_SYSTEM_TO_DEVICE	(1 << 25) /* Write */
 #define UTRD_DD_DEVICE_TO_SYSTEM	(1 << 26) /* Read */
@@ -61,12 +49,9 @@ MODULE_PARM_DESC(fips_lu, "FIPS partition LUN");
 #define UPIU_TT_COMMAND			(1)
 #define IO_COMPLETION_TIMEOUT_MS	(200)
 #define IO_RETRY_COUNT			(25)
+#define SG_ENTRY_IV_NUM_WORDS		(4)
 #define SG_ENTRY_ENCKEY_NUM_WORDS	(8)
 #define SG_ENTRY_TWKEY_NUM_WORDS	(8)
-#define ISE_VERSION_REG_OFFSET		(0x1C)
-#define ISE_VERSION_MAJOR(x)		(((x) >> 16) & 0xFF)
-#define ISE_VERSION_MINOR(x)		(((x) >> 8) & 0xFF)
-#define ISE_VERSION_REVISION(x)		((x) & 0xFF)
 
 struct fips_buffer_info {
 	void *io_buffer;
@@ -75,27 +60,30 @@ struct fips_buffer_info {
 	dma_addr_t ucd_dma_addr;
 };
 
-struct pixel_ufs_prdt_entry {
+struct fmp_sg_entry {
 	/* The first four fields correspond to those of ufshcd_sg_entry. */
 	__le32 des0;
 	__le32 des1;
 	__le32 des2;
 	/*
-	 * The crypto enable bit and keyslot are configured in the high bits of
-	 * des3, whose low bits already contain ufshcd_sg_entry::size.
+	 * The algorithm and key length are configured in the high bits of des3,
+	 * whose low bits already contain ufshcd_sg_entry::size.
 	 */
-#define CRYPTO_ENABLE		(1U << 31)
-#define CRYPTO_KEYSLOT(keyslot)	((keyslot) << 18)
 	__le32 des3;
 
 	/* The IV with all bytes reversed */
-	__be64 iv[2];
+	__be32 file_iv[SG_ENTRY_IV_NUM_WORDS];
 
-	/* Unused (when KE=0) */
-	__le32 nonce[4];
+	/*
+	 * The key with all bytes reversed.  For XTS, the two halves of the key
+	 * are given separately and are byte-reversed separately.
+	 */
+	__be32 file_enckey[SG_ENTRY_ENCKEY_NUM_WORDS];
+	__be32 file_twkey[SG_ENTRY_TWKEY_NUM_WORDS];
 
-	/* Unused */
-	__le32 reserved[20];
+	/* Not used */
+	__be32 disk_iv[4];
+	__le32 reserved[4];
 };
 
 struct sense_data {
@@ -139,66 +127,6 @@ struct upiu {
 	struct sense_data sense_data;
 } __packed;
 
-static int ise_available;
-
-/* Configure inline encryption (or decryption) on requests that require it. */
-static void ufs_pixel_fips_crypto_fill_prdt(void *unused, struct ufs_hba *hba,
-					     struct ufshcd_lrb *lrbp,
-					     unsigned int segments, int *err)
-{
-	struct pixel_ufs_prdt_entry *prdt =
-		(struct pixel_ufs_prdt_entry *)lrbp->ucd_prdt_ptr;
-	unsigned int i;
-
-	/*
-	 * There's nothing to do for unencrypted requests, since the "crypto
-	 * enable" bit is already 0 by default, as it's in the same word as
-	 * ufshcd_sg_entry::size which was already initialized.
-	 */
-	if (lrbp->crypto_key_slot < 0)
-		return;
-
-	/*
-	 * FIPS140-3 prohibits access to encryption services if they did not
-	 * pass the algorithm self test. Trigger a panic in such an event.
-	 */
-	if (!ise_available)
-		panic("ISE encryption services are disabled\n");
-
-	/* Configure encryption on each segment of the request. */
-	for (i = 0; i < segments; i++) {
-		struct pixel_ufs_prdt_entry *ent = &prdt[i];
-		struct ufshcd_sg_entry *prd = (struct ufshcd_sg_entry *)ent;
-
-		/* Each segment must be exactly one data unit. */
-		if (le32_to_cpu(prd->size) + 1 != UFS_PIXEL_CRYPTO_DATA_UNIT_SIZE) {
-			pr_err("scatterlist segment is misaligned for crypto\n");
-			*err = -EIO;
-			return;
-		}
-
-		/* Enable crypto and set the keyslot. */
-		ent->des3 |= cpu_to_le32(CRYPTO_ENABLE |
-					 CRYPTO_KEYSLOT(lrbp->crypto_key_slot));
-
-		/*
-		 * Set the IV.  The DUN is *supposed* to be formatted as a
-		 * little endian integer to produce the 16-byte AES-XTS IV, like
-		 * it is in the UFS standard.  But this hardware interprets the
-		 * IV bytes backwards.  Therefore, we actually need to format
-		 * the DUN as big endian to get the right ciphertext at the end.
-		 */
-		ent->iv[0] = 0;
-		ent->iv[1] = cpu_to_be64(lrbp->data_unit_num + i);
-	}
-
-	/*
-	 * Unset the keyslot in the ufshcd_lrb so that the keyslot and DUN don't
-	 * get filled into the UTRD according to the UFSHCI standard.
-	 */
-	lrbp->crypto_key_slot = -1;
-}
-
 static void ufs_pixel_fips_build_utrd(struct ufs_hba *hba,
 				      struct utp_transfer_req_desc *utrd,
 				      dma_addr_t ucd_dma_addr,
@@ -207,7 +135,7 @@ static void ufs_pixel_fips_build_utrd(struct ufs_hba *hba,
 	u16 response_offset =
 		offsetof(struct utp_transfer_cmd_desc, response_upiu);
 	u16 prdt_offset = offsetof(struct utp_transfer_cmd_desc, prd_table);
-	u16 prdt_length = sizeof(struct pixel_ufs_prdt_entry);
+	u16 prdt_length = sizeof(struct fmp_sg_entry);
 
 	memset(utrd, 0, sizeof(struct utp_transfer_req_desc));
 
@@ -239,26 +167,41 @@ static void ufs_pixel_fips_build_utrd(struct ufs_hba *hba,
 static void ufs_pixel_fips_build_prdt(struct ufs_hba *hba,
 				      struct utp_transfer_cmd_desc *ucd_addr,
 				      dma_addr_t buffer_dma_addr,
-				      u32 buffer_len, u32 mki, const u8 *iv)
+				      u32 buffer_len, const u8 *key,
+				      const u8 *iv)
 {
-	struct pixel_ufs_prdt_entry *sg_entry =
-		(struct pixel_ufs_prdt_entry *)ucd_addr->prd_table;
+	struct fmp_sg_entry *sg_entry =
+		(struct fmp_sg_entry *)ucd_addr->prd_table;
 
 	sg_entry->des0 = cpu_to_le32(lower_32_bits(buffer_dma_addr));
 	sg_entry->des1 = cpu_to_le32(upper_32_bits(buffer_dma_addr));
 	sg_entry->des2 = 0;
-	if (!iv) {
+	if (!(key && iv)) {
 		sg_entry->des3 = cpu_to_le32(buffer_len - 1);
 	} else {
-		sg_entry->des3 = cpu_to_le32(CRYPTO_ENABLE |
-					     CRYPTO_KEYSLOT(mki) |
-					     (buffer_len - 1));
+		u32 i;
+		const u8 *tweak_key = key + (SG_ENTRY_ENCKEY_NUM_WORDS * 4);
+
 		/*
-		 * The hardware interprets the IV in backwards order. Hence we
-		 * reverse each byte of the 16 byte IV.
-		 */
-		sg_entry->iv[0] = get_unaligned_be64(iv + 8);
-		sg_entry->iv[1] = get_unaligned_be64(iv);
+		* The verification only needs to test AES-256-XTS algorithm as
+		* it's the only one being used by the system and the only one
+		* being certified. The actual gs101 hardware is capable of
+		* supporting AES-128-CBC, AES-256-CBC, and AES-128-XTS as well.
+		*/
+		sg_entry->des3 = cpu_to_le32(PRDT_FAS_XTS | PRDT_FKL_256 |
+					     (buffer_len - 1));
+
+		for (i = 0; i < SG_ENTRY_IV_NUM_WORDS; i++) {
+			sg_entry->file_iv[SG_ENTRY_IV_NUM_WORDS - 1 - i] =
+				get_unaligned_be32(&iv[i * 4]);
+		}
+
+		for (i = 0; i < SG_ENTRY_ENCKEY_NUM_WORDS; i++) {
+			sg_entry->file_enckey[SG_ENTRY_ENCKEY_NUM_WORDS - 1 - i] =
+				get_unaligned_be32(&key[i * 4]);
+			sg_entry->file_twkey[SG_ENTRY_TWKEY_NUM_WORDS - 1 - i] =
+				get_unaligned_be32(&tweak_key[i * 4]);
+		}
 	}
 }
 
@@ -325,39 +268,14 @@ static int ufs_pixel_fips_send_utrd(struct ufs_hba *hba,
 	return 0;
 }
 
-static int ufs_pixel_fips_check_response(struct utp_upiu_rsp *resp, u8 ocs)
-{
-	u8 status = be32_to_cpu(resp->header.dword_1);
-	u8 response = be32_to_cpu(resp->header.dword_1) >> 8;
-	if (ocs || status || response) {
-		uint8_t response_code = resp->sr.sense_data[0] & 0x7F;
-		if (response_code == 0x70) {
-			uint8_t key = resp->sr.sense_data[2] & 0xF;
-			uint8_t asc = resp->sr.sense_data[12];
-			uint8_t ascq = resp->sr.sense_data[13];
-			if (!ocs && status == 2 && response == 1 && key == 6 && asc == 0x29)
-				pr_info("UA Reported\n");
-			else
-				pr_warn("I/O Result: OCS=%x status=%X key=%X asc=%X ascq=%X\n",
-					ocs, status, key, asc, ascq);
-		} else {
-			pr_warn("I/O Result: OCS=%x status=%X\n", ocs, status);
-		}
-		return -EIO;
-	}
-
-	return 0;
-}
-
 int ufs_pixel_fips_send_request(struct ufs_hba *hba, struct scsi_cdb *cdb,
 				struct fips_buffer_info *bi, u32 buffer_len,
-				u32 lu, u32 mki, const u8 *iv)
+				u32 lu, const u8 *key, const u8 *iv)
 {
 	struct utp_transfer_req_desc utrd;
 	struct utp_upiu_rsp *resp_upiu =
 		(struct utp_upiu_rsp *)bi->ucd_addr->response_upiu;
 	u8 task_tag = 0x7;
-	u8 ocs;
 	u32 data_direction;
 	u32 flags;
 	u32 crypto;
@@ -385,12 +303,12 @@ int ufs_pixel_fips_send_request(struct ufs_hba *hba, struct scsi_cdb *cdb,
 	}
 
 	/* Build UTRD */
-	crypto = iv ? UTRD_CRYPTO_ENABLE : UTRD_CRYPTO_DISABLE;
+	crypto = key && iv ? UTRD_CRYPTO_ENABLE : UTRD_CRYPTO_DISABLE;
 	ufs_pixel_fips_build_utrd(hba, &utrd, bi->ucd_dma_addr, data_direction,
 				  crypto);
 	/* Build PRDT */
 	ufs_pixel_fips_build_prdt(hba, bi->ucd_addr, bi->io_buffer_dma_addr,
-				  buffer_len, mki, iv);
+				  buffer_len, key, iv);
 
 	/* Build UPIU */
 	ufs_pixel_fips_build_upiu(hba, bi->ucd_addr, cdb, flags, lu, buffer_len,
@@ -401,12 +319,19 @@ int ufs_pixel_fips_send_request(struct ufs_hba *hba, struct scsi_cdb *cdb,
 
 	/* Send */
 	ret = ufs_pixel_fips_send_utrd(hba, &utrd, task_tag);
-	if (ret)
-		return ret;
+	if (!ret) {
+		u8 ocs = le32_to_cpu(utrd.header.dword_2) & 0xFF;
+		u8 upiu_status = be32_to_cpu(resp_upiu->header.dword_1) & 0xFF;
+		u8 upiu_response =
+			(be32_to_cpu(resp_upiu->header.dword_1) >> 8) & 0xFF;
+		if (ocs || upiu_status || upiu_response) {
+			pr_err("Request failed OCS=%02X status=%02X resp=%02X\n",
+			       ocs, upiu_status, upiu_response);
+			ret = -EIO;
+		}
+	}
 
-	ocs = le32_to_cpu(utrd.header.dword_2) & 0xFF;
-
-	return ufs_pixel_fips_check_response(resp_upiu, ocs);
+	return ret;
 }
 
 static int ufs_pixel_fips_request_sense(struct ufs_hba *hba,
@@ -419,7 +344,7 @@ static int ufs_pixel_fips_request_sense(struct ufs_hba *hba,
 	cdb.transfer_len = cpu_to_be16(SENSE_DATA_ALLOC_LEN);
 
 	ret = ufs_pixel_fips_send_request(hba, &cdb, bi, SENSE_DATA_ALLOC_LEN,
-					  fips_lu, 0, NULL);
+					  fips_lu, NULL, NULL);
 
 	if (ret)
 		return -EIO;
@@ -428,7 +353,7 @@ static int ufs_pixel_fips_request_sense(struct ufs_hba *hba,
 }
 
 static int ufs_pixel_fips_send_io(struct ufs_hba *hba,
-				  struct fips_buffer_info *bi, u32 mki,
+				  struct fips_buffer_info *bi, const u8 *key,
 				  const u8 *iv, u8 op_code)
 {
 	struct scsi_cdb cdb = {};
@@ -441,7 +366,7 @@ static int ufs_pixel_fips_send_io(struct ufs_hba *hba,
 
 	do {
 		ret = ufs_pixel_fips_send_request(
-			hba, &cdb, bi, UFS_PIXEL_BUFFER_SIZE, fips_lu, mki, iv);
+			hba, &cdb, bi, UFS_PIXEL_BUFFER_SIZE, fips_lu, key, iv);
 	} while (ret && retry-- > 0);
 
 	if (ret)
@@ -451,16 +376,16 @@ static int ufs_pixel_fips_send_io(struct ufs_hba *hba,
 }
 
 static int ufs_pixel_fips_read(struct ufs_hba *hba, struct fips_buffer_info *bi,
-			       u32 mki, const u8 *iv)
+			       const u8 *key, const u8 *iv)
 {
-	return ufs_pixel_fips_send_io(hba, bi, mki, iv, READ_10);
+	return ufs_pixel_fips_send_io(hba, bi, key, iv, READ_10);
 }
 
 static int ufs_pixel_fips_write(struct ufs_hba *hba,
-				struct fips_buffer_info *bi, u32 mki,
+				struct fips_buffer_info *bi, const u8 *key,
 				const u8 *iv)
 {
-	return ufs_pixel_fips_send_io(hba, bi, mki, iv, WRITE_10);
+	return ufs_pixel_fips_send_io(hba, bi, key, iv, WRITE_10);
 }
 
 static const u8 pixel_fips_encryption_pt[] = {
@@ -471,10 +396,10 @@ static const u8 pixel_fips_encryption_pt[] = {
 };
 
 static const u8 pixel_fips_encryption_ct[] = {
-	0xEE, 0xD2, 0xD3, 0x69, 0xE9, 0x60, 0x48, 0xF1,
-	0x26, 0xE8, 0xC6, 0xD7, 0x2E, 0xFB, 0x0C, 0x69,
-	0x2A, 0xC4, 0xF4, 0x32, 0x58, 0xD0, 0x7B, 0xC2,
-	0x75, 0xA9, 0xB0, 0x4B, 0x4E, 0x39, 0x31, 0x98,
+	0x57, 0x4F, 0x6F, 0xD1, 0x21, 0x33, 0xE5, 0xF4,
+	0x6F, 0x72, 0x30, 0x63, 0x8B, 0xCE, 0xA7, 0xD4,
+	0x84, 0x84, 0xF9, 0xE2, 0xC5, 0xB9, 0xE4, 0x48,
+	0x8D, 0x49, 0x02, 0x88, 0x80, 0xB3, 0x07, 0xE2,
 };
 
 static const u8 pixel_fips_encryption_key[] = {
@@ -498,21 +423,6 @@ int ufs_pixel_fips_verify(struct ufs_hba *hba)
 	int ret;
 	u32 interrupts;
 	struct fips_buffer_info bi;
-	const u32 mki = UFS_PIXEL_MASTER_KEY_INDEX;
-	static u32 ise_version = 0;
-
-	if (!ise_version) {
-		struct exynos_ufs *ufs = to_exynos_ufs(hba);
-		struct ufs_vs_handle *handle = &ufs->handle;
-
-		ise_version = readl(handle->ufsp + ISE_VERSION_REG_OFFSET);
-		pr_info("ISE HW version  %u.%u.%u\n",
-			 ISE_VERSION_MAJOR(ise_version),
-		 	 ISE_VERSION_MINOR(ise_version),
-		 	 ISE_VERSION_REVISION(ise_version));
-	}
-
-	ise_available = 0;
 
 	if (!fips_first_lba || !fips_last_lba ||
 	    fips_last_lba < fips_first_lba) {
@@ -561,22 +471,24 @@ int ufs_pixel_fips_verify(struct ufs_hba *hba)
 	memcpy(bi.io_buffer, pixel_fips_encryption_pt,
 	       sizeof(pixel_fips_encryption_pt));
 
-	ret = ufs_pixel_fips_write(hba, &bi, mki, pixel_fips_encryption_iv);
+	ret = ufs_pixel_fips_write(hba, &bi, pixel_fips_encryption_key,
+				   pixel_fips_encryption_iv);
 	if (ret)
 		goto out;
 
 	memset(bi.io_buffer, 0, UFS_PIXEL_BUFFER_SIZE);
 
-	ret = ufs_pixel_fips_read(hba, &bi, 0, NULL);
+	ret = ufs_pixel_fips_read(hba, &bi, NULL, NULL);
 	if (ret)
 		goto out;
 
 	if (memcmp(bi.io_buffer, pixel_fips_encryption_ct,
-		sizeof(pixel_fips_encryption_ct))) {
+		   sizeof(pixel_fips_encryption_ct))) {
 		pr_err("Encryption verification failed\n");
 		ret = -EINVAL;
 		goto out;
 	}
+
 	pr_info("Encryption verification passed\n");
 
 	/*
@@ -587,7 +499,8 @@ int ufs_pixel_fips_verify(struct ufs_hba *hba)
 	 */
 	memset(bi.io_buffer, 0, UFS_PIXEL_BUFFER_SIZE);
 
-	ret = ufs_pixel_fips_read(hba, &bi, mki, pixel_fips_encryption_iv);
+	ret = ufs_pixel_fips_read(hba, &bi, pixel_fips_encryption_key,
+				  pixel_fips_encryption_iv);
 	if (ret)
 		goto out;
 
@@ -602,14 +515,10 @@ int ufs_pixel_fips_verify(struct ufs_hba *hba)
 out:
 	ufshcd_writel(hba, interrupts, REG_INTERRUPT_ENABLE);
 	ufshcd_release(hba);
-	memzero_explicit(bi.ucd_addr, UFS_PIXEL_UCD_SIZE);
-	memzero_explicit(bi.io_buffer, UFS_PIXEL_BUFFER_SIZE);
 	dma_free_coherent(hba->dev, UFS_PIXEL_UCD_SIZE, bi.ucd_addr,
 			  bi.ucd_dma_addr);
 	dma_free_coherent(hba->dev, UFS_PIXEL_BUFFER_SIZE, bi.io_buffer,
 			  bi.io_buffer_dma_addr);
-
-	ise_available = !ret;
 
 	return ret;
 }
@@ -710,7 +619,6 @@ const u8 *__ufs_pixel_rodata_start = &__fips140_rodata_start;
 static int __init ufs_pixel_hmac_self_test(void)
 {
 	u8 hmac_digest[UFS_PIXEL_FIPS_SHA256_DIGEST_SIZE];
-	int ret;
 
 	ufs_pixel_fips_hmac_sha256(ufs_pixel_fips_hmac_message,
 				   sizeof(ufs_pixel_fips_hmac_message),
@@ -718,11 +626,8 @@ static int __init ufs_pixel_hmac_self_test(void)
 				   sizeof(ufs_pixel_fips_hmac_key),
 				   hmac_digest);
 
-	ret = memcmp(hmac_digest, ufs_pixel_fips_hmac_expected,
+	return memcmp(hmac_digest, ufs_pixel_fips_hmac_expected,
 		      UFS_PIXEL_FIPS_SHA256_DIGEST_SIZE);
-	memzero_explicit(hmac_digest, sizeof(hmac_digest));
-
-	return ret;
 }
 extern struct {
 	u32	offset;
@@ -750,7 +655,7 @@ static int __init ufs_pixel_self_integrity_test(void)
 				       offset_to_ptr(&fips140_rela_text.offset),
 				       fips140_rela_text.count);
 	if (ret) {
-		kfree_sensitive(hmac_buffer);
+		kfree(hmac_buffer);
 		return ret;
 	}
 
@@ -758,22 +663,21 @@ static int __init ufs_pixel_self_integrity_test(void)
 				   fips140_integ_hmac_key,
 				   strlen(fips140_integ_hmac_key), hmac_digest);
 
-	kfree_sensitive(hmac_buffer);
+	kfree(hmac_buffer);
 
-	ret = memcmp(hmac_digest, fips140_integ_hmac_digest,
+	return memcmp(hmac_digest, fips140_integ_hmac_digest,
 		      UFS_PIXEL_FIPS_SHA256_DIGEST_SIZE);
-	memzero_explicit(hmac_digest, sizeof(hmac_digest));
-
-	return ret;
 }
 
 static int __init ufs_pixel_fips_init(void)
 {
-	int ret;
-
-	pr_info ("%s version %s loading...\n",
-		 UFS_PIXEL_FIPS140_MODULE_NAME,
-		 UFS_PIXEL_FIPS140_MODULE_VERSION);
+	/*
+	 * If the first LBA of FIPS partition is 0, SW key mode is disabled
+	 * and the module doesn't have to do anything. Additional check will
+	 * be performed in ufs_pixel_fips_verify().
+	 */
+	if (!fips_first_lba)
+		return 0;
 
 	/* Verify internal HMAC functionality */
 	if (ufs_pixel_hmac_self_test()) {
@@ -789,12 +693,7 @@ static int __init ufs_pixel_fips_init(void)
 	}
 	pr_info("Verify self HMAC passed\n");
 
-	ret = register_trace_android_vh_ufs_fill_prdt(
-				ufs_pixel_fips_crypto_fill_prdt, NULL);
-	if (ret)
-		pr_err("Failed to register ufs_pixel_fips_crypto_fill_prdt\n");
-
-	return ret;
+	return 0;
 }
 
 static void ufs_pixel_fips_exit(void)
@@ -805,7 +704,6 @@ module_init(ufs_pixel_fips_init);
 module_exit(ufs_pixel_fips_exit);
 
 MODULE_DESCRIPTION(
-	"FIPS140-3 Compliant SW Driven UFS Inline Encryption Self Test Module");
+	"FIPS140-2 Compliant SW Driven UFS Inline Encryption Self Test Module");
 MODULE_AUTHOR("Konstantin Vyshetsky");
 MODULE_LICENSE("GPL v2");
-MODULE_VERSION(UFS_PIXEL_FIPS140_MODULE_VERSION);
