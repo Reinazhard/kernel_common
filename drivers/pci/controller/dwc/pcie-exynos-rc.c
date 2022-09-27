@@ -87,6 +87,9 @@ static const struct dma_map_ops pcie_dma_ops;
 //static void exynos_d3_sleep_hook(void *unused, struct pci_dev *dev,
 //				 unsigned int *delay);
 
+#define MODEM_CH_NUM    0
+#define WIFI_CH_NUM     1
+
 #if IS_ENABLED(CONFIG_GS_S2MPU)
 struct phys_mem {
 	struct list_head list;
@@ -95,7 +98,6 @@ struct phys_mem {
 	unsigned char *refcnt_array;
 };
 
-#define WIFI_CH_NUM     1
 #define ALIGN_SIZE	0x1000UL
 #define REF_COUNT_UNDERFLOW 255
 
@@ -221,6 +223,15 @@ void s2mpu_update_refcnt(struct device *dev,
 }
 #endif
 
+static int get_ch_num(struct pci_dev *epdev)
+{
+	int ch_num = WIFI_CH_NUM;
+	if (epdev->vendor == PCI_VENDOR_ID_SAMSUNG)
+		ch_num = MODEM_CH_NUM;
+
+	return ch_num;
+}
+
 static void exynos_pcie_mem_copy_epdev(struct exynos_pcie *exynos_pcie)
 {
 	struct device *epdev = &exynos_pcie->ep_pci_dev->dev;
@@ -247,7 +258,7 @@ static void *pcie_dma_alloc_attrs(struct device *dev, size_t size,
 		pr_err("EP device is NULL!!!\n");
 		return NULL;
 	}
-	ch_num = pci_domain_nr(epdev->bus);
+	ch_num = get_ch_num(epdev);
 
 	exynos_pcie = &g_pcie_rc[ch_num];
 
@@ -290,7 +301,7 @@ static void pcie_dma_free_attrs(struct device *dev, size_t size,
 		pr_err("EP device is NULL!!!\n");
 		return;
 	}
-	ch_num = pci_domain_nr(epdev->bus);
+	ch_num = get_ch_num(epdev);
 
 	exynos_pcie = &g_pcie_rc[ch_num];
 
@@ -316,7 +327,7 @@ static dma_addr_t pcie_dma_map_page(struct device *dev, struct page *page,
 		pr_err("EP device is NULL!!!\n");
 		return -EINVAL;
 	}
-	ch_num = pci_domain_nr(epdev->bus);
+	ch_num = get_ch_num(epdev);
 
 	exynos_pcie = &g_pcie_rc[ch_num];
 
@@ -347,7 +358,7 @@ static void pcie_dma_unmap_page(struct device *dev, dma_addr_t dma_addr,
 		pr_err("EP device is NULL!!!\n");
 		return;
 	}
-	ch_num = pci_domain_nr(epdev->bus);
+	ch_num = get_ch_num(epdev);
 
 	exynos_pcie = &g_pcie_rc[ch_num];
 
