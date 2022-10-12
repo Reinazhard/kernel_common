@@ -935,7 +935,7 @@ ifneq ($(CONFIG_BCMDHD_PCIE),)
 	DHDCFLAGS += -DDHD_NVRAM_NAME="\"bcmdhd.cal\""
 	DHDCFLAGS += -DDHD_CLM_NAME="\"bcmdhd_clm.blob\""
 	DHDCFLAGS += -DDHD_MAP_NAME="\"fw_bcmdhd.map\""
-ifneq ($(CONFIG_SOC_GS201),)
+ifneq ($(filter y, $(CONFIG_SOC_GS101) $(CONFIG_SOC_GS201)),)
 	DHDCFLAGS += -DCPL_TIMEOUT_RECOVERY
 endif
 endif
