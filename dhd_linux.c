@@ -7205,13 +7205,19 @@ dhd_open(struct net_device *net)
 #endif /* DHD_LB_TXP */
 		dhd->dhd_lb_candidacy_override = FALSE;
 #endif /* DHD_LB */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
-	rtnl_lock();
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)) */
+		/* Exit if dhd_stop is in progress which will be called with rtnl_lock */
+		while (!rtnl_trylock()) {
+			if (dhd->pub.stop_in_progress) {
+				DHD_PRINT(("%s: exit as dhd_stop in progress\n", __FUNCTION__));
+				return;
+			}
+			/* wait for 20msec and retry rtnl_lock */
+			DHD_PRINT(("%s: rtnl_lock held, wait\n", __FUNCTION__));
+			OSL_SLEEP(20);
+		}
+		DHD_PRINT(("%s: netdev_update_features\n", __FUNCTION__));
 		netdev_update_features(net);
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
-	rtnl_unlock();
-#endif /* (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)) */
+		rtnl_unlock();
 #ifdef DHD_PM_OVERRIDE
 		g_pm_override = FALSE;
 #endif /* DHD_PM_OVERRIDE */
