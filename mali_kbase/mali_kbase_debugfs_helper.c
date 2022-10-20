@@ -93,7 +93,7 @@ int kbase_debugfs_string_validator(char *const buf)
 	int err = 0;
 	char *ptr = buf;
 
-	while (*ptr) {
+	while(*ptr) {
 		unsigned long test_number;
 		size_t len;
 
