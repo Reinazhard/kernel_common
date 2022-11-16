@@ -690,7 +690,8 @@
 		/* check susphy support */
 		suspend_clk_freq = <19200000>;
 		/* INT min lock support */
-		usb-pm-qos-int = <200000>;
+		usb-pm-qos-usb3-int = <332000>;
+		usb-pm-qos-usb2-int = <200000>;
 
 		usbdrd_dwc3: dwc3 {
 			compatible = "synopsys,dwc3";
