@@ -22921,7 +22921,7 @@ wl_cfg80211_sup_event_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgde
 			WL_DBG(("Authorizing Port with BSSID from DHD profile " MACDBG" \n",
 				MAC2STRDBG(curbssid)));
 		}
-		cfg80211_port_authorized(ndev, (const u8 *)curbssid, GFP_KERNEL);
+		cfg80211_port_authorized(ndev, (const u8 *)curbssid, NULL, 0, GFP_KERNEL);
 #elif (LINUX_VERSION_CODE > KERNEL_VERSION(3, 14, 0)) || defined(WL_VENDOR_EXT_SUPPORT)
 		err = wl_cfgvendor_send_async_event(bcmcfg_to_wiphy(cfg), ndev,
 			BRCM_VENDOR_EVENT_PORT_AUTHORIZED, NULL, 0);
