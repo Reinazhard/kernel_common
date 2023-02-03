@@ -357,6 +357,7 @@
 	phy-power-off = "false";
 	use-pcieon-sleep = "true";
 	perst-delay-us = <18000>;
+	support-msi64-addressing = "true";
 	ep-device-type = <EP_SAMSUNG_MODEM>;
 	vreg1-supply = <&m_ldo16_reg>;
 	vreg2-supply = <&m_ldo18_reg>;
@@ -370,6 +371,7 @@
 	use-ia = "true";
 	use-l1ss = "true";
 	use-phy-isol-en = "true";
+	support-msi64-addressing = "true";
 	max-link-speed = <LINK_SPEED_GEN2>;
 	perst-delay-us = <20000>;
 	ep-device-type = <EP_BCM_WIFI>;
