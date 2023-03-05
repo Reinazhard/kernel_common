@@ -1504,7 +1504,7 @@ ifneq ($(dtstree),)
 %.dtbo: include/config/kernel.release scripts_dtc
 	$(Q)$(MAKE) $(build)=$(dtstree) $(dtstree)/$@
 
-%/dtbo.img: include/config/kernel.release scripts_dtc
+%/dtbo.img: include/config/kernel.release scripts_dtc scripts_mkdtimg
 	$(Q)$(MAKE) $(build)=$(dtstree) $(dtstree)/$@
 
 PHONY += dtbs dtbs_install dtbs_check
@@ -1527,9 +1527,12 @@ endif
 
 endif
 
-PHONY += scripts_dtc
+PHONY += scripts_dtc scripts_mkdtimg
 scripts_dtc: scripts_basic
 	$(Q)$(MAKE) $(build)=scripts/dtc-aosp
+
+scripts_mkdtimg: scripts_dtc
+	$(Q)$(MAKE) $(build)=scripts/libufdt
 
 ifneq ($(filter dt_binding_check, $(MAKECMDGOALS)),)
 export CHECK_DT_BINDING=y
