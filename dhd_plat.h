@@ -95,6 +95,7 @@ extern uint32 dhd_plat_get_rc_vendor_id(void);
 extern uint32 dhd_plat_get_rc_device_id(void);
 
 extern uint16 dhd_plat_align_rxbuf_size(uint16 rxbufpost_sz);
+extern bool dhd_plat_pcie_enable_big_core(void);
 
 #ifdef WLAN_TRACKER
 enum {

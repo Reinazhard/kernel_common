@@ -797,7 +797,8 @@ void dhd_plat_report_bh_sched(void *plat_info, int resched)
 
 	if (resched > 0) {
 		resched_streak++;
-		return;
+		if (resched_streak <= RESCHED_STREAK_MAX_HIGH)
+			return;
 	}
 
 	if (resched_streak > resched_streak_max) {
@@ -1448,7 +1449,10 @@ uint16 dhd_plat_align_rxbuf_size(uint16 rxbufpost_sz)
 #endif
 }
 
-
+ bool dhd_plat_pcie_enable_big_core(void)
+ {
+	return is_irq_on_big_core;
+ }
 #ifndef BCMDHD_MODULAR
 /* Required only for Built-in DHD */
 device_initcall(dhd_wlan_init);
