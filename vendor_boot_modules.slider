@@ -202,7 +202,6 @@ vh_preemptirq_long.ko
 vh_sched.ko
 vh_thermal.ko
 xhci-exynos.ko
-zcomp_cpu.ko
 zcomp_eh.ko
 zram_gs.ko
 zsmalloc.ko
