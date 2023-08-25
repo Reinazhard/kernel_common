@@ -13,13 +13,6 @@
 
 #include "xhci.h"
 
-/*
- * This variable used to present if aoc_usb module was probed done. If offload
- * is enabled, the controller needs to wait for the aoc_usb probe done and then
- * continue the controller's probe.
- */
-extern bool aoc_usb_probe_done;
-
 enum aoc_usb_msg {
 	SYNC_DEVICE_CONTEXT,
 	GET_DCBAA_PTR,
@@ -137,7 +130,7 @@ int usb_host_mode_state_notify(enum aoc_usb_state usb_state);
 int register_aoc_usb_notifier(struct notifier_block *nb);
 int unregister_aoc_usb_notifier(struct notifier_block *nb);
 
-extern int dwc3_otg_fsm_try_reset(bool enabled);
+extern int dwc3_otg_host_ready(bool ready);
 extern bool aoc_alsa_usb_capture_enabled(void);
 extern bool aoc_alsa_usb_playback_enabled(void);
 

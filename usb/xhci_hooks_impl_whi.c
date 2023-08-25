@@ -504,11 +504,6 @@ static int usb_audio_offload_init(struct xhci_hcd *xhci)
 	int ret;
 	u32 out_val;
 
-	if (!aoc_usb_probe_done) {
-		dev_dbg(dev, "deferring the probe\n");
-		return -EPROBE_DEFER;
-	}
-
 	vendor_data = kzalloc(sizeof(struct xhci_vendor_data), GFP_KERNEL);
 	if (!vendor_data)
 		return -ENOMEM;
