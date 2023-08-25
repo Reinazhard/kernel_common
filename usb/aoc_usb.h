@@ -44,13 +44,6 @@ enum usb_offload_op_mode {
 	USB_OFFLOAD_DRAM
 };
 
-enum usb_recover_state {
-	NONE,
-	RECOVER_HOST_OFF,
-	RECOVER_HOST_ON,
-	RECOVERED
-};
-
 enum usb_dev_hub {
 	UNDEFINED,
 	USB1,
@@ -87,7 +80,6 @@ struct aoc_usb_drvdata {
 	struct notifier_block nb;
 
 	long service_timeout;
-	unsigned int usb_conn_state;
 };
 
 struct get_dev_ctx_args {
@@ -145,8 +137,7 @@ int usb_host_mode_state_notify(enum aoc_usb_state usb_state);
 int register_aoc_usb_notifier(struct notifier_block *nb);
 int unregister_aoc_usb_notifier(struct notifier_block *nb);
 
-extern int dwc3_otg_host_enable(bool enabled);
-
+extern int dwc3_otg_fsm_try_reset(bool enabled);
 extern bool aoc_alsa_usb_capture_enabled(void);
 extern bool aoc_alsa_usb_playback_enabled(void);
 
