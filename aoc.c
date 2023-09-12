@@ -852,7 +852,7 @@ static ssize_t services_show(struct device *dev, struct device_attribute *attr,
 	int i;
 
 	atomic_inc(&prvdata->aoc_process_active);
-	if (aoc_state != AOC_STATE_ONLINE || work_busy(&prvdata->watchdog_work))
+	if (aoc_state != AOC_STATE_ONLINE)
 		goto exit;
 
 	ret += scnprintf(buf, PAGE_SIZE, "Services : %d\n", services);
@@ -939,7 +939,7 @@ static ssize_t reset_store(struct device *dev, struct device_attribute *attr,
 	struct aoc_prvdata *prvdata = dev_get_drvdata(dev);
 	char reason_str[MAX_RESET_REASON_STRING_LEN + 1];
 
-	if (aoc_state != AOC_STATE_ONLINE || work_busy(&prvdata->watchdog_work)) {
+	if (aoc_state != AOC_STATE_ONLINE) {
 		dev_err(dev, "Reset requested while AoC is not online");
 		return -ENODEV;
 	}
@@ -976,7 +976,6 @@ static ssize_t force_reload_store(struct device *dev, struct device_attribute *a
 
 	strlcpy(prvdata->ap_reset_reason, "Force Reload AoC", AP_RESET_REASON_LENGTH);
 	prvdata->ap_triggered_reset = true;
-
 	schedule_work(&prvdata->watchdog_work);
 
 	return count;
@@ -1548,7 +1547,7 @@ static void aoc_take_offline(struct aoc_prvdata *prvdata)
 	int rc;
 
 	/* check if devices/services are ready */
-	if (aoc_state == AOC_STATE_ONLINE) {
+	if (aoc_state == AOC_STATE_ONLINE || aoc_state == AOC_STATE_SSR) {
 		pr_notice("taking aoc offline\n");
 		aoc_state = AOC_STATE_OFFLINE;
 
@@ -1613,7 +1612,7 @@ static void aoc_process_services(struct aoc_prvdata *prvdata, int offset)
 
 	atomic_inc(&prvdata->aoc_process_active);
 
-	if (aoc_state != AOC_STATE_ONLINE || work_busy(&prvdata->watchdog_work))
+	if (aoc_state != AOC_STATE_ONLINE)
 		goto exit;
 
 	services = aoc_num_services();
@@ -1699,6 +1698,7 @@ static void aoc_watchdog(struct work_struct *work)
 	bool ap_reset = false, valid_magic;
 	struct aoc_section_header *crash_info_section;
 
+	aoc_state = AOC_STATE_SSR;
 	prvdata->total_restarts++;
 
 	/* Initialize crash_info[0] to identify if it has changed later in the function. */
@@ -2173,7 +2173,7 @@ static int aoc_core_suspend(struct device *dev)
 	int i = 0;
 
 	atomic_inc(&prvdata->aoc_process_active);
-	if (aoc_state != AOC_STATE_ONLINE || work_busy(&prvdata->watchdog_work))
+	if (aoc_state != AOC_STATE_ONLINE)
 		goto exit;
 
 	for (i = 0; i < total_services; i++) {
@@ -2196,7 +2196,7 @@ static int aoc_core_resume(struct device *dev)
 	int i = 0;
 
 	atomic_inc(&prvdata->aoc_process_active);
-	if (aoc_state != AOC_STATE_ONLINE || work_busy(&prvdata->watchdog_work))
+	if (aoc_state != AOC_STATE_ONLINE)
 		goto exit;
 
 	for (i = 0; i < total_services; i++) {
