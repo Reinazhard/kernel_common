@@ -65,10 +65,17 @@
 #define CRP_CTL3_1 0x38
 #define CRP_CTL3_2 0x60
 #define CRP_CTL3_3 0x88
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 #define TH_IMM_R_0 0x010
 #define TH_IMM_W_0 0x018
 #define TH_HIGH_R_0 0x020
 #define TH_HIGH_W_0 0x028
+#else
+#define TH_IMM_R_0 0x0100
+#define TH_IMM_W_0 0x0180
+#define TH_HIGH_R_0 0x0200
+#define TH_HIGH_W_0 0x0280
+#endif
 
 #define HIGH_THRESHOLD_SHIFT 24
 #define MID_THRESHOLD_SHIFT 16
@@ -80,7 +87,12 @@
 #define DEFAULT_QMAX_RD_TH 0x60
 #define DEFAULT_QMAX_WR_TH 0x30
 
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 #define QMAX_THRESHOLD_R 0x000
 #define QMAX_THRESHOLD_W 0x004
+#else
+#define QMAX_THRESHOLD_R 0x0050
+#define QMAX_THRESHOLD_W 0x0054
+#endif
 
 #endif /* __REGS_BTSGS101_H__ */

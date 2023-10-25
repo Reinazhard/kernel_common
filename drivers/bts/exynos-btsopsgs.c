@@ -239,6 +239,7 @@ static int set_ipbts_urgent(void __iomem *base, struct bts_stat *stat)
 	if (stat->qurgent_th_w > MAX_QUTH)
 		stat->qurgent_th_w = MAX_QUTH;
 
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 	/* Read QUrgent */
 	tmp_reg = __raw_readl(base + TIMEOUT_R0);
 	tmp_reg = tmp_reg & ~((MAX_QUTH << TIMEOUT_CNT_VC0)
@@ -265,6 +266,15 @@ static int set_ipbts_urgent(void __iomem *base, struct bts_stat *stat)
 		| (stat->qurgent_th_w << TIMEOUT_CNT_VC3);
 
 	__raw_writel(tmp_reg, base + TIMEOUT_W0);
+#else
+	tmp_reg = __raw_readl(base + TIMEOUT);
+	tmp_reg = tmp_reg &
+		  ~((MAX_QUTH << TIMEOUT_CNT_R) | (MAX_QUTH << TIMEOUT_CNT_W));
+	tmp_reg = tmp_reg | (stat->qurgent_th_r << TIMEOUT_CNT_R) |
+		  (stat->qurgent_th_w << TIMEOUT_CNT_W);
+
+	__raw_writel(tmp_reg, base + TIMEOUT);
+#endif
 
 	tmp_reg = __raw_readl(base + CON);
 	tmp_reg &= ~((1 << QURGENT_EN) | (1 << EX_QURGENT_EN));
@@ -286,10 +296,18 @@ static int get_ipbts_urgent(void __iomem *base, struct bts_stat *stat)
 	if (!base || !stat)
 		return -ENODATA;
 
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 	tmp_reg = __raw_readl(base + TIMEOUT_R0);
 	stat->qurgent_th_r = (tmp_reg & (MAX_QUTH << TIMEOUT_CNT_VC0)) >> TIMEOUT_CNT_VC0;
 	tmp_reg = __raw_readl(base + TIMEOUT_W0);
 	stat->qurgent_th_w = (tmp_reg & (MAX_QUTH << TIMEOUT_CNT_VC0)) >> TIMEOUT_CNT_VC0;
+#else
+	tmp_reg = __raw_readl(base + TIMEOUT);
+	stat->qurgent_th_r =
+		(tmp_reg & (MAX_QUTH << TIMEOUT_CNT_R)) >> TIMEOUT_CNT_R;
+	stat->qurgent_th_w =
+		(tmp_reg & (MAX_QUTH << TIMEOUT_CNT_W)) >> TIMEOUT_CNT_W;
+#endif
 
 	tmp_reg = __raw_readl(base + CON);
 	stat->qurgent_on = (tmp_reg & (1 << QURGENT_EN)) >> QURGENT_EN;
