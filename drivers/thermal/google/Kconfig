@@ -24,3 +24,10 @@ config GOOGLE_BCL
 	help
 	  This enables the monitoring and reporting of different types of system
 	  throttling as a result of battery current limiter.
+
+config GOOGLE_BCL_LEGACY
+	tristate "Google Battery current limiter"
+	depends on THERMAL
+	help
+	  This enables the monitoring and reporting of different types of system
+	  throttling as a result of battery current limiter.

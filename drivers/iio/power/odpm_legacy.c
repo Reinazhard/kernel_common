@@ -1534,7 +1534,7 @@ void odpm_get_raw_lpf_values(struct odpm_info *info, s2mpg1x_meter_mode mode,
 }
 EXPORT_SYMBOL_GPL(odpm_get_raw_lpf_values);
 
-static void odpm_get_lpf_values(struct odpm_info *info, s2mpg1x_meter_mode mode,
+void odpm_get_lpf_values(struct odpm_info *info, s2mpg1x_meter_mode mode,
 				u64 micro_unit[ODPM_CHANNEL_MAX])
 {
 	int ch;
@@ -1559,6 +1559,7 @@ static void odpm_get_lpf_values(struct odpm_info *info, s2mpg1x_meter_mode mode,
 		micro_unit[ch] = (u32)_IQ30_to_int(micro_unit_iq30);
 	}
 }
+EXPORT_SYMBOL_GPL(odpm_get_lpf_values);
 
 static ssize_t odpm_show_lpf_values(struct device *dev,
 				    struct device_attribute *attr, char *buf,

@@ -291,6 +291,8 @@ void google_bcl_qos_update(struct bcl_zone *zone, bool throttle);
 int google_bcl_setup_qos(struct bcl_device *bcl_dev);
 void google_bcl_remove_qos(struct bcl_device *bcl_dev);
 void google_init_debugfs(struct bcl_device *bcl_dev);
+#elif IS_ENABLED(CONFIG_GOOGLE_BCL_LEGACY)
+#include <soc/google/bcl_legacy.h>
 #else
 struct bcl_device;
 

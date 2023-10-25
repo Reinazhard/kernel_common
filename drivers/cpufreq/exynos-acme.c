@@ -32,7 +32,11 @@
 #include <trace/events/power.h>
 
 #include "exynos-acme.h"
+#if IS_ENABLED(CONFIG_GS_THERMAL_V3)
 #include <soc/google/gs_tmu_v3.h>
+#else
+#include <soc/google/gs_tmu_v2.h>
+#endif
 /*
  * list head of cpufreq domain
  */
@@ -190,6 +194,7 @@ fail_scale:
 /*
  * TJ and TSKIN are the two actors that could apply thermal pressure independently
  */
+#if IS_ENABLED(CONFIG_GS_THERMAL_V3)
 static void apply_thermal_pressure(struct exynos_cpufreq_domain *domain,
 				   unsigned long thermal_pressure, int thermal_actor)
 {
@@ -253,7 +258,57 @@ static void exynos_cpufreq_set_tj_pressure_cb(struct cpumask *maskp, int cdev_in
 	thermal_pressure = (max_capacity <= capacity) ? 0 : max_capacity - capacity;
 	apply_thermal_pressure(domain, thermal_pressure, TJ);
 }
+#else
+/*
+ * When device thermals throttle the CPUs, we notify the scheduler of
+ * capacity change using the thermal pressure APIs
+ */
+static void update_thermal_pressure(struct exynos_cpufreq_domain *domain, int dfs_count_change)
+{
+	cpumask_t *maskp = &domain->cpus;
+	struct cpufreq_policy *policy = cpufreq_cpu_get(cpumask_first(maskp));
+	unsigned long max_capacity, min_capacity, capacity;
 
+	if (!policy)
+		return;
+
+	max_capacity = arch_scale_cpu_capacity(cpumask_first(maskp));
+	min_capacity = (policy->cpuinfo.min_freq * max_capacity) / (policy->cpuinfo.max_freq);
+	capacity     = (domain->max_freq_qos * max_capacity) / (policy->cpuinfo.max_freq);
+
+	spin_lock(&domain->thermal_update_lock);
+	domain->dfs_throttle_count += dfs_count_change;
+
+	BUG_ON(domain->dfs_throttle_count < 0);
+	BUG_ON(domain->dfs_throttle_count > domain->max_dfs_count);
+
+	capacity = (domain->dfs_throttle_count > 0) ? min_capacity : capacity;
+
+	arch_set_thermal_pressure(maskp, max_capacity - capacity);
+	spin_unlock(&domain->thermal_update_lock);
+
+	cpufreq_cpu_put(policy);
+}
+
+static void exynos_cpufreq_set_thermal_dfs_cb(cpumask_t *maskp, bool is_dfs_throttled)
+{
+	unsigned int cpu;
+	cpumask_t cpu_per_domain = CPU_MASK_NONE;
+
+	/* create a mask with one cpu per domain */
+	for_each_cpu_and(cpu, maskp, cpu_possible_mask) {
+		struct exynos_cpufreq_domain *domain = find_domain(cpu);
+		cpumask_set_cpu(cpumask_first(&domain->cpus), &cpu_per_domain);
+	}
+
+	/* apply thermal pressure for each domain */
+	for_each_cpu(cpu, &cpu_per_domain) {
+		update_thermal_pressure(find_domain(cpu), (is_dfs_throttled ? 1 : -1));
+	}
+}
+#endif
+
+#if IS_ENABLED(CONFIG_GS_THERMAL_V3)
 /*********************************************************************
  *                   EXYNOS CPUFREQ ECT POWER TABLE OFFSET           *
  *********************************************************************/
@@ -267,6 +322,7 @@ static int exynos_cpufreq_get_power_table_ect_offset(struct cpumask *maskp, int 
 		}
 	return -ENODEV;
 }
+#endif
 
 /*********************************************************************
  *                   EXYNOS CPUFREQ DRIVER INTERFACE                 *
@@ -339,7 +395,9 @@ static int exynos_cpufreq_verify(struct cpufreq_policy_data *new_policy)
 	struct cpufreq_policy policy;
 	unsigned int min_freq, max_freq;
 	int index, ret;
+#if IS_ENABLED(CONFIG_GS_THERMAL_V3)
 	unsigned long max_capacity, capacity;
+#endif
 
 	if (!domain)
 		return -EINVAL;
@@ -372,12 +430,16 @@ static int exynos_cpufreq_verify(struct cpufreq_policy_data *new_policy)
 
 	ret = cpufreq_frequency_table_verify(new_policy, domain->freq_table);
 	if (!ret) {
+#if IS_ENABLED(CONFIG_GS_THERMAL_V3)
 		unsigned long thermal_pressure;
 		max_capacity = arch_scale_cpu_capacity(cpumask_first(&domain->cpus));
 		capacity = new_policy->max * max_capacity;
 		capacity /= new_policy->cpuinfo.max_freq;
 		thermal_pressure = max_capacity - capacity;
 		apply_thermal_pressure(domain, thermal_pressure, TSKIN);
+#else
+		update_thermal_pressure(domain, 0);
+#endif
 	}
 	return ret;
 }
@@ -398,10 +460,12 @@ static int __exynos_cpufreq_target(struct cpufreq_policy *policy,
 		goto out;
 	}
 
+#if IS_ENABLED(CONFIG_GS_THERMAL_V3)
 	if (!cpumask_subset(&domain->cpus, &tmu_enabled_mask)) {
 		ret = -EINVAL;
 		goto out;
 	}
+#endif
 
 	if (target_freq > domain->user_max_qos_req.pnode.prio) {
 		ret = -EINVAL;
@@ -1381,12 +1445,14 @@ static int init_domain(struct exynos_cpufreq_domain *domain,
 	mutex_init(&domain->lock);
 
 	spin_lock_init(&domain->thermal_update_lock);
+#if IS_ENABLED(CONFIG_GS_THERMAL_V3)
 	domain->thermal_pressure[TJ] = 0;
 	domain->thermal_pressure[TSKIN] = 0;
 	scnprintf(domain->thermal_pressure_name[TJ], (THERMAL_PRESSURE_STR_LEN), "TJ_THERMAL_PRESSURE_%d",
 		  domain->id);
 	scnprintf(domain->thermal_pressure_name[TSKIN], (THERMAL_PRESSURE_STR_LEN), "TSKIN_THERMAL_PRESSURE_%d",
 		  domain->id);
+#endif
 
 	/*
 	 * Initialize CPUFreq DVFS Manager
@@ -1396,6 +1462,14 @@ static int init_domain(struct exynos_cpufreq_domain *domain,
 
 	cpu_dev = get_cpu_device(cpumask_first(&domain->cpus));
 	dev_pm_opp_of_register_em(cpu_dev, &domain->cpus);
+
+#if IS_ENABLED(CONFIG_GS_THERMAL_V2)
+	/* Get max-dfs-count per domain. Set to zero, if not configured*/
+	if (of_property_read_u32(dn, "max-dfs-count", &domain->max_dfs_count)) {
+		pr_info("max-dfs-count not set for cpufreq-domain:%d, defaulting to 0\n", domain->id);
+		domain->max_dfs_count = 0;
+	}
+#endif
 
 	pr_info("Complete to initialize cpufreq-domain%d\n", domain->id);
 
@@ -1433,7 +1507,9 @@ static int exynos_cpufreq_probe(struct platform_device *pdev)
 		print_domain_info(domain);
 	}
 
+#if IS_ENABLED(CONFIG_GS_THERMAL_V3)
 	register_get_cpu_power_table_ect_offset(exynos_cpufreq_get_power_table_ect_offset);
+#endif
 
 	if (!domain_id) {
 		pr_err("Failed to initialize cpufreq driver\n");
@@ -1525,7 +1601,11 @@ static int exynos_cpufreq_probe(struct platform_device *pdev)
 	}
 
 	register_pm_notifier(&exynos_cpufreq_pm);
+#if IS_ENABLED(CONFIG_GS_THERMAL_V3)
 	register_thermal_pressure_cb(exynos_cpufreq_set_tj_pressure_cb);
+#else
+	register_dfs_throttle_cb(exynos_cpufreq_set_thermal_dfs_cb);
+#endif
 
 	pr_info("Initialized Exynos cpufreq driver\n");
 

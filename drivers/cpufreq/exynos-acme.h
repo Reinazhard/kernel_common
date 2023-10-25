@@ -93,10 +93,16 @@ struct exynos_cpufreq_domain {
 	struct thermal_cooling_device *cdev;
 
 	/* Thermal pressure */
+	unsigned int ect_table_offset;
+#if IS_ENABLED(CONFIG_GS_THERMAL_V3)
 	spinlock_t thermal_update_lock;
 	unsigned long thermal_pressure[NR_THERMAL_ACTORS];
 	char thermal_pressure_name[NR_THERMAL_ACTORS][THERMAL_PRESSURE_STR_LEN];
-	unsigned int ect_table_offset;
+#else
+	int dfs_throttle_count;
+	unsigned int max_dfs_count;
+	spinlock_t thermal_update_lock;
+#endif
 };
 
 /*
