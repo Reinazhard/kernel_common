@@ -20,40 +20,6 @@
 		k-bits = <16>; /* K is a two's complement 16-bit intger */
 
 		dsim-modes {
-			720x1280 {
-				mode-name = "720x1280";
-				/*
-				 * p m s k
-				 * mfr mrr sel_pf icp
-				 * afc_enb extafc feed_en fsel
-				 * fout_mask rsel
-				 */
-				pmsk = <
-					0x2 0xB3 0x2 0x0955
-					0xd 0x3 0x0 0x0
-					0x0 0x0 0x0 0x0
-					0x0 0x0
-					>;
-				hs-clk = <1100>;
-				esc-clk = <20>;
-			};
-			1080x1920 {
-				mode-name = "1080x1920";
-				/*
-				 * p m s k
-				 * mfr mrr sel_pf icp
-				 * afc_enb extafc feed_en fsel
-				 * fout_mask rsel
-				 */
-				pmsk = <
-					0x2 0xB3 0x2 0x0955
-					0xd 0x3 0x0 0x0
-					0x0 0x0 0x0 0x0
-					0x0 0x0
-					>;
-				hs-clk = <1100>;
-				esc-clk = <20>;
-			};
 			1440x3040 {
 				mode-name = "1440x3040";
 				/*
@@ -110,6 +76,22 @@
 					0x2 0x9E 0x2 0xB700 /* p m s k */
 					>;
 				hs-clk = <969>;
+				esc-clk = <20>;
+			};
+			1840x2208 {
+				mode-name = "1840x2208";
+				pmsk = <
+					0x2 0xD0 0x2 0x5555 /* p m s k */
+					>;
+				hs-clk = <1280>;
+				esc-clk = <20>;
+			};
+			1080x2092 {
+				mode-name = "1080x2092";
+				pmsk = <
+					0x2 0xEE 0x3 0xA155 /* p m s k */
+					>;
+				hs-clk = <730>;
 				esc-clk = <20>;
 			};
 		};

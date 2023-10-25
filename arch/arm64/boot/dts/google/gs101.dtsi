@@ -36,8 +36,8 @@
 #include "gs101-sysmmu.dtsi"
 #include "gs101-tpu.dtsi"
 #include "gs101-ufs.dtsi"
-#include "gs101-usb.dtsi"
 #include "gs101-usi.dtsi"
+#include "gs101-usb.dtsi"
 #include "gs101-isp.dtsi"
 #include "gs101-debug.dtsi"
 #include "gs101-s2mpu.dtsi"
@@ -78,7 +78,7 @@
 	};
 
 	chosen {
-		bootargs = "rcupdate.rcu_expedited=1 rcu_nocbs=0-7 earlycon=exynos4210,mmio32,0x10A00000 console=ttySAC0,115200n8 clocksource=arch_sys_counter root=/dev/ram0 androidboot.hardware.platform=gs101 androidboot.debug_level=0x4948 firmware_class.path=/vendor/firmware reserve-fimc=0xffffff90f9fe0000 clk_ignore_unused loop.max_part=7 coherent_pool=4M no_console_suspend softlockup_panic=1 cgroup_disable=memory";
+		bootargs = "earlycon=exynos4210,mmio32,0x10A00000 console=ttySAC0,115200n8 clocksource=arch_sys_counter root=/dev/ram0 androidboot.hardware.platform=gs101 androidboot.debug_level=0x4948 firmware_class.path=/vendor/firmware reserve-fimc=0xffffff90f9fe0000 clk_ignore_unused loop.max_part=7 coherent_pool=4M no_console_suspend softlockup_panic=1 maxcpus=8 kasan_multi_shot ehld.noehld=1";
 	};
 
 	odm: odm {
@@ -154,11 +154,21 @@
 	eh: eh@17100000 {
 		compatible = "google,eh";
 		reg = <0x0 0x17100000 0x1000>;
-		interrupts = <GIC_SPI IRQ_EH_0_EH IRQ_TYPE_LEVEL_HIGH>;
+		interrupts = <GIC_SPI IRQ_EH_0_EH IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI IRQ_EH_1_EH IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI IRQ_EH_2_EH IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI IRQ_EH_3_EH IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI IRQ_EH_4_EH IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI IRQ_EH_5_EH IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI IRQ_EH_6_EH IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI IRQ_EH_7_EH IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI IRQ_EH_8_EH IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI IRQ_EH_9_EH IRQ_TYPE_LEVEL_HIGH>;
 		clocks = <&clock DOUT_CLK_EH_BUSP>;
 		clock-names = "eh-clock";
 		power-domains = <&pd_eh>;
 		google,eh,ignore-gctrl-reset;
+		s2mpu = <&s2mpu_eh>;
 	};
 
 	serial_0: uart@10A00000 {
@@ -351,7 +361,6 @@
 			<0x0 0x176A0000 0x100>;
 		reg-names = "gpio_alive_base", "gpio_far_alive_base",
 			"gicd_ispendrn_base", "mailbox_ap_aoc_host";
-
 		num-gic = <30>;
 		suspend_mode_idx = <8>;
 
@@ -442,6 +451,8 @@
 		swreset-system-offset = <0x3A00>;
 		swreset-system-trigger = <0x2>;
 		reboot-cmd-offset = <0x0810>;
+		dump-gpr-offset = <0x0808>;
+		force-warm-reboot-on-thermal-shutdown;
 	};
 
 	gpio_keys: gpio_keys {
@@ -467,6 +478,13 @@
 
 	acpm_mbox_test: mbox {
 		compatible = "google,acpm-mbox-test";
+		mfd-regulator-list-main =
+			<0x119 0x11C 0x11F 0x122
+			0x125 0x128 0x12B 0x134
+			0x14C 0x14E 0x151>;
+		mfd-regulator-list-sub =
+			<0x113 0x116 0x119 0x11C
+			0x11E 0x126 0x129 0x143>;
 	};
 
 	acpm {
@@ -494,7 +512,7 @@
 		dump-size = <0x3B000>;                  /* 236KB */
 		acpm-ipc-channel = <12>;
 		fvmap_addr = <0x31000>;
-		panic-action = <GO_WATCHDOG_ID>;
+		panic-action = <GO_PANIC_ID>;
 	};
 
 	acpm_stats {
@@ -712,6 +730,8 @@
 		/*	but refclk shouldn't be omitted */
 		phyclk_mux = "none";
 		phy_refclk = "phy_ref";
+		phy_ref_clock = <26000000>;
+		s2mpu = <&s2mpu_hsi0>;
 
 		/*
 		 * if Main phy has the other phy,
@@ -886,11 +906,11 @@
 
 			use_alt_dvfs;
 			polling_ms = <0>;
-			target_load = <20 10 80>;
-			min_sample_time = <20>;
-			hold_sample_time = <60>;
+			target_load = <20 10 90>;
+			min_sample_time = <50>;
+			hold_sample_time = <100>;
 			hispeed_load = <100>;
-			hispeed_freq = <1352000>;
+			hispeed_freq = <1014000>;
 
 			/* MIF to INT mapping table used in ALT DVFS */
 			mif_int_map = <
@@ -898,19 +918,13 @@
 				 * mif_clk  int_clk
 				 *-----------------
 				 */
-				   3172000   465000
+				   3172000   533000
 				   2730000   465000
-				   2535000   465000
-				   2288000   465000
 				   2028000   332000
-				   1716000   332000
 				   1539000   267000
 				   1352000   200000
 				   1014000   155000
-				    845000   155000
-				    676000   155000
 				    546000   100000
-				    421000   100000
 			>;
 		};
 
@@ -1047,7 +1061,7 @@
 			/* Delay time */
 			use_delay_time = "false";
 
-			freq_info = <134000 134000 134000 134000 711000 711000>;
+			freq_info = <100000 100000 100000 100000 711000 711000>;
 			/* <initial_freq, default_qos, suspend_freq, min, max, reboot_freq> */
 
 			/* governor data */
@@ -1090,6 +1104,7 @@
 
 		mif_cpu0_mem_lat: devfreq_mif_cpu0_memlat@17000010 {
 			compatible = "memlat-devfreq";
+			cpu = <0>;
 			devfreq_type = <DEVFREQ_MIF>;
 			devfreq_domain_name = "MIF";
 			pm_qos_class = <PM_QOS_BUS_THROUGHPUT>;
@@ -1106,6 +1121,7 @@
 
 		mif_cpu1_mem_lat: devfreq_mif_cpu1_memlat@17000010 {
 			compatible = "memlat-devfreq";
+			cpu = <1>;
 			devfreq_type = <DEVFREQ_MIF>;
 			devfreq_domain_name = "MIF";
 			pm_qos_class = <PM_QOS_BUS_THROUGHPUT>;
@@ -1122,6 +1138,7 @@
 
 		mif_cpu2_mem_lat: devfreq_mif_cpu2_memlat@17000010 {
 			compatible = "memlat-devfreq";
+			cpu = <2>;
 			devfreq_type = <DEVFREQ_MIF>;
 			devfreq_domain_name = "MIF";
 			pm_qos_class = <PM_QOS_BUS_THROUGHPUT>;
@@ -1138,6 +1155,7 @@
 
 		mif_cpu3_mem_lat: devfreq_mif_cpu3_memlat@17000010 {
 			compatible = "memlat-devfreq";
+			cpu = <3>;
 			devfreq_type = <DEVFREQ_MIF>;
 			devfreq_domain_name = "MIF";
 			pm_qos_class = <PM_QOS_BUS_THROUGHPUT>;
@@ -1155,6 +1173,7 @@
 
 		mif_cpu4_mem_lat: devfreq_mif_cpu4_memlat@17000010 {
 			compatible = "memlat-devfreq";
+			cpu = <4>;
 			devfreq_type = <DEVFREQ_MIF>;
 			devfreq_domain_name = "MIF";
 			pm_qos_class = <PM_QOS_BUS_THROUGHPUT>;
@@ -1171,6 +1190,7 @@
 
 		mif_cpu5_mem_lat: devfreq_mif_cpu5_memlat@17000010 {
 			compatible = "memlat-devfreq";
+			cpu = <5>;
 			devfreq_type = <DEVFREQ_MIF>;
 			devfreq_domain_name = "MIF";
 			pm_qos_class = <PM_QOS_BUS_THROUGHPUT>;
@@ -1187,6 +1207,7 @@
 
 		mif_cpu6_mem_lat: devfreq_mif_cpu6_memlat@17000010 {
 			compatible = "memlat-devfreq";
+			cpu = <6>;
 			devfreq_type = <DEVFREQ_MIF>;
 			devfreq_domain_name = "MIF";
 			pm_qos_class = <PM_QOS_BUS_THROUGHPUT>;
@@ -1203,6 +1224,7 @@
 
 		mif_cpu7_mem_lat: devfreq_mif_cpu7_memlat@17000010 {
 			compatible = "memlat-devfreq";
+			cpu = <7>;
 			devfreq_type = <DEVFREQ_MIF>;
 			devfreq_domain_name = "MIF";
 			pm_qos_class = <PM_QOS_BUS_THROUGHPUT>;
@@ -1311,6 +1333,7 @@
 	};
 
 
+
 	cpu4_memlat_cpugrp: cpu4-cpugrp {
 		compatible = "arm-memlat-cpugrp";
 		cpulist = <&cpu4>;
@@ -1367,11 +1390,11 @@
 				<  100000  845000 >,
 				<  851000 1014000 >,
 				< 1106000 1352000 >,
-				< 1237000 1539000 >,
+				< 1277000 1539000 >,
 				< 1582000 1716000 >,
-				< 1901000 2028000 >,
+				< 1826000 2028000 >,
 				< 2048000 2288000 >,
-				< 2225200 2730000 >,
+				< 2252000 2730000 >,
 				< 2507000 3172000 >;
 		};
 	};
@@ -1390,11 +1413,11 @@
 				<  100000  845000 >,
 				<  851000 1014000 >,
 				< 1106000 1352000 >,
-				< 1237000 1539000 >,
+				< 1277000 1539000 >,
 				< 1582000 1716000 >,
-				< 1901000 2028000 >,
+				< 1826000 2028000 >,
 				< 2048000 2288000 >,
-				< 2225200 2730000 >,
+				< 2252000 2730000 >,
 				< 2507000 3172000 >;
 		};
 	};
@@ -1470,21 +1493,6 @@
 		tmu_name = "BIG";
 		id = <0>;
 		ect_nouse;
-		cpu_hw_throttling_enable;
-		cpu_hw_throttling_clr_threshold = <98>;
-		cpu_hw_throttling_trigger_threshold = <103>;
-		ppm_level = <0x66>; /* 75% dispatch reduction */
-		mpmm_level = <0x10>; /* Gear 0 for BIG7 and BIG6 */
-		/* Gear 0: 80% throttle percentage with 30% trigger threshold */
-		pause_enable;
-		tmu_type = <TMU_TYPE_CPU>;
-		resume_threshold = <103>;
-		pause_threshold = <108>;
-		pause_cpus = "6-7";
-		hardlimit_enable;
-		hardlimit_clr_threshold = <98>;
-		hardlimit_threshold = <103>;
-		hardlimit_cooling_state = <THERMAL_NO_LIMIT>;
 		#thermal-sensor-cells = <0>;
 
 		use-pi-thermal;
@@ -1496,9 +1504,12 @@
 		i_max = <2>;
 		integral_cutoff = <10>;
 		sustainable_power = <2000>;
+		control_temp_step = <25>;
 
 		tmu_work_affinity = "0-7";
 		hotplug_work_affinity = "0-3";
+		has-dfs-support;
+		dfs_throttled_cpus = "4-7";
 	};
 
 	tmuctrl_1: MID@100A0000 {
@@ -1508,15 +1519,6 @@
 		tmu_name = "MID";
 		id = <1>;
 		ect_nouse;
-		pause_enable;
-		tmu_type = <TMU_TYPE_CPU>;
-		resume_threshold = <103>;
-		pause_threshold = <108>;
-		pause_cpus = "4-5";
-		hardlimit_enable;
-		hardlimit_clr_threshold = <93>;
-		hardlimit_threshold = <98>;
-		hardlimit_cooling_state = <THERMAL_NO_LIMIT>;
 		#thermal-sensor-cells = <0>;
 
 		use-pi-thermal;
@@ -1528,9 +1530,12 @@
 		i_max = <5>;
 		integral_cutoff = <20>;
 		sustainable_power = <1000>;
+		control_temp_step = <25>;
 
 		tmu_work_affinity = "0-7";
 		hotplug_work_affinity = "0-3";
+		has-dfs-support;
+		dfs_throttled_cpus = "4-7";
 	};
 
 	tmuctrl_2: LITTLE@100A0000 {
@@ -1540,18 +1545,17 @@
 		tmu_name = "LITTLE";
 		id = <2>;
 		ect_nouse;
-		tmu_type = <TMU_TYPE_CPU>;
 		#thermal-sensor-cells = <0>;
 
 		use-pi-thermal;
 		polling_delay_on = <50>;
 		polling_delay_off = <0>;
-		k_po = <60>;
-		k_pu = <60>;
-		k_i = <20>;
-		i_max = <5>;
-		integral_cutoff = <20>;
-		sustainable_power = <200>;
+		k_po = <40>;
+		k_pu = <40>;
+		k_i = <0>;
+		i_max = <0>;
+		sustainable_power = <350>;
+		control_temp_step = <25>;
 
 		tmu_work_affinity = "0-7";
 	};
@@ -1563,11 +1567,6 @@
 		tmu_name = "G3D";
 		id = <3>;
 		ect_nouse;
-		tmu_type = <TMU_TYPE_GPU>;
-		hardlimit_enable;
-		hardlimit_clr_threshold = <93>;
-		hardlimit_threshold = <98>;
-		hardlimit_cooling_state = <THERMAL_NO_LIMIT>;
 		#thermal-sensor-cells = <0>;
 
 		use-pi-thermal;
@@ -1579,8 +1578,10 @@
 		i_max = <5>;
 		integral_cutoff = <20>;
 		sustainable_power = <200>;
+		control_temp_step = <25>;
 
 		tmu_work_affinity = "0-7";
+		has-dfs-support;
 	};
 
 	tmuctrl_4: ISP@100B0000 {
@@ -1590,7 +1591,6 @@
 		tmu_name = "ISP";
 		id = <4>;
 		ect_nouse;
-		tmu_type = <TMU_TYPE_ISP>;
 		#thermal-sensor-cells = <0>;
 
 		tmu_work_affinity = "0-7";
@@ -1603,14 +1603,6 @@
 		tmu_name = "TPU";
 		id = <5>;
 		ect_nouse;
-		pause_enable;
-		tmu_type = <TMU_TYPE_TPU>;
-		resume_threshold = <103>;
-		pause_threshold = <108>;
-		hardlimit_enable;
-		hardlimit_clr_threshold = <93>;
-		hardlimit_threshold = <98>;
-		hardlimit_cooling_state = <THERMAL_NO_LIMIT>;
 		#thermal-sensor-cells = <0>;
 
 		use-pi-thermal;
@@ -1622,8 +1614,10 @@
 		i_max = <5>;
 		integral_cutoff = <20>;
 		sustainable_power = <200>;
+		control_temp_step = <25>;
 
 		tmu_work_affinity = "0-7";
+		has-dfs-support;
 	};
 
 	thermal_zones: thermal-zones {
@@ -1650,22 +1644,22 @@
 					type = "passive";
 				};
 				big_alert1: big-alert1 {
-					temperature = <94000>; /* millicelsius */
-					hysteresis = <4000>; /* millicelsius */
+					temperature = <92000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
 					type = "passive";
 				};
 				big_alert2: big-alert2 {
-					temperature = <95000>; /* millicelsius */
-					hysteresis = <5000>; /* millicelsius */
+					temperature = <94000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
 					type = "active";
 				};
-				big_hw_throttling: big-hw_throttling {
-					temperature = <103000>; /* millicelsius */
-					hysteresis = <5000>; /* millicelsius */
+				big_alert3: big-alert3 {
+					temperature = <96000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
 					type = "active";
 				};
-				big_pause: big-pause {
-					temperature = <108000>; /* millicelsius */
+				big_dfs: big-dfs {
+					temperature = <100000>; /* millicelsius */
 					hysteresis = <5000>; /* millicelsius */
 					type = "active";
 				};
@@ -1705,22 +1699,22 @@
 					type = "passive";
 				};
 				mid_alert1: mid-alert1 {
-					temperature = <94000>; /* millicelsius */
-					hysteresis = <4000>; /* millicelsius */
+					temperature = <92000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
 					type = "passive";
 				};
 				mid_alert2: mid-alert2 {
-					temperature = <95000>; /* millicelsius */
-					hysteresis = <5000>; /* millicelsius */
+					temperature = <94000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
 					type = "active";
 				};
-				mid_hw_throttling: mid-hw_throttling {
-					temperature = <98000>; /* millicelsius */
-					hysteresis = <5000>; /* millicelsius */
+				mid_alert3: mid-alert3 {
+					temperature = <96000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
 					type = "active";
 				};
-				mid_pause: mid-pause {
-					temperature = <108000>; /* millicelsius */
+				mid_dfs: mid-dfs {
+					temperature = <100000>; /* millicelsius */
 					hysteresis = <5000>; /* millicelsius */
 					type = "active";
 				};
@@ -1815,23 +1809,23 @@
 					type = "passive";
 				};
 				gpu_alert0: gpu-alert0 {
-					temperature = <95000>; /* millicelsius */
-					hysteresis = <5000>; /* millicelsius */
-					type = "active";
+					temperature = <92000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "passive";
 				};
-				gpu_hardlimit: gpu-hardlimit {
-					temperature = <98000>; /* millicelsius */
-					hysteresis = <5000>; /* millicelsius */
+				gpu_alert1: gpu-alert1 {
+					temperature = <94000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
 					type = "active";
 				};
 				gpu_alert2: gpu-alert2 {
-					temperature = <104000>; /* millicelsius */
-					hysteresis = <4000>; /* millicelsius */
+					temperature = <96000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
 					type = "active";
 				};
-				gpu_alert3: gpu-alert3 {
-					temperature = <108000>; /* millicelsius */
-					hysteresis = <3000>; /* millicelsius */
+				gpu_dfs: gpu-dfs {
+					temperature = <100000>; /* millicelsius */
+					hysteresis = <5000>; /* millicelsius */
 					type = "active";
 				};
 				gpu_hot: gpu-hot {
@@ -1864,36 +1858,36 @@
 				isp_alert1: isp-alert1 {
 					temperature = <70000>; /* millicelsius */
 					hysteresis = <2000>; /* millicelsius */
-					type = "active";
+					type = "passive";
 				};
 				isp_alert2: isp-alert2 {
-					temperature = <95000>; /* millicelsius */
+					temperature = <90000>; /* millicelsius */
 					hysteresis = <5000>; /* millicelsius */
-					type = "active";
+					type = "passive";
 				};
 				isp_alert3: isp-alert3 {
-					temperature = <98000>; /* millicelsius */
-					hysteresis = <5000>; /* millicelsius */
-					type = "active";
+					temperature = <92000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "passive";
 				};
 				isp_alert4: isp-alert4 {
-					temperature = <103000>; /* millicelsius */
-					hysteresis = <5000>; /* millicelsius */
-					type = "active";
+					temperature = <94000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "passive";
 				};
 				isp_alert5: isp-alert5 {
-					temperature = <108000>; /* millicelsius */
-					hysteresis = <5000>; /* millicelsius */
-					type = "active";
+					temperature = <96000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "passive";
 				};
 				isp_alert6: isp-alert6 {
-					temperature = <110000>; /* millicelsius */
+					temperature = <100000>; /* millicelsius */
 					hysteresis = <5000>; /* millicelsius */
-					type = "active";
+					type = "passive";
 				};
 				isp_hot: isp-hot {
 					temperature = <115000>; /* millicelsius */
-					hysteresis = <5000>; /* millicelsius */
+					hysteresis = <3000>; /* millicelsius */
 					type = "hot";
 				};
 			};
@@ -1921,22 +1915,22 @@
 					type = "passive";
 				};
 				tpu_alert0: tpu-alert0 {
-					temperature = <95000>; /* millicelsius */
-					hysteresis = <5000>; /* millicelsius */
-					type = "active";
-				};
-				tpu_hardlimit: tpu-hardlimit {
-					temperature = <98000>; /* millicelsius */
-					hysteresis = <5000>; /* millicelsius */
-					type = "active";
+					temperature = <92000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "passive";
 				};
 				tpu_alert1: tpu-alert1 {
-					temperature = <104000>; /* millicelsius */
-					hysteresis = <4000>; /* millicelsius */
+					temperature = <94000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
 					type = "active";
 				};
-				tpu_pause: tpu-pause {
-					temperature = <108000>; /* millicelsius */
+				tpu_alert2: tpu-alert2 {
+					temperature = <96000>; /* millicelsius */
+					hysteresis = <2000>; /* millicelsius */
+					type = "active";
+				};
+				tpu_dfs: tpu-dfs {
+					temperature = <100000>; /* millicelsius */
 					hysteresis = <5000>; /* millicelsius */
 					type = "active";
 				};

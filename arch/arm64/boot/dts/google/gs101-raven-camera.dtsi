@@ -9,7 +9,6 @@
 #include <dt-bindings/clock/gs101.h>
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/pinctrl/samsung.h>
-#include <dt-bindings/pinctrl/gs101.h>
 
 &pinctrl_4 {
 	hsi2c1_bus: hsi2c1-bus {
@@ -55,6 +54,11 @@
 		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
 		samsung,pin-drv = <GS101_PIN_DRV_2_5_MA>;
 	};
+};
+
+&spi14_cs2{
+	samsung,pin-con-pdn = <EXYNOS_PIN_PDN_PREV>;
+	samsung,pin-pud-pdn = <EXYNOS_PIN_PULL_NONE>;
 };
 
 &hsi2c_1 {
@@ -121,7 +125,7 @@
 	clock-frequency = <370000>;
 
 	pinctrl-names = "default","on_i2c","off_i2c";
-	pinctrl-0 = <&hsi2c7_bus>;
+	pinctrl-0 = <&hsi2c7_bus &spi14_cs2>;
 	pinctrl-1 = <&hsi2c7_bus>;
 	pinctrl-2 = <&hsi2c7_bus>;
 };
@@ -208,6 +212,9 @@
 					 2000
 					 1000
 					 1000>;
+				transaction-thread-priority = <99>;
+
+				i2c-lock-group-id = <0>;
 			};
 
 			/* FRONT CAMERA IMX663 */
@@ -280,6 +287,9 @@
 					 1000
 					 1000
 					 1000>;
+				transaction-thread-priority = <99>;
+
+				i2c-lock-group-id = <1>;
 			};
 
 			/* REAR ULTRA WIDE CAMERA IMX386 */
@@ -352,6 +362,9 @@
 					 1000
 					 3000
 					 1000>;
+				transaction-thread-priority = <99>;
+
+				i2c-lock-group-id = <2>;
 			};
 
 			/* REAR CAMERA IMX586 */
@@ -442,6 +455,9 @@
 					 3000
 					 1000
 					 1000>;
+				transaction-thread-priority = <99>;
+
+				i2c-lock-group-id = <3>;
 			};
 
 			/* Eeprom lc898128 for gn1*/
@@ -491,6 +507,8 @@
 					<2000
 					 1000
 					 1000>;
+
+				i2c-lock-group-id = <0>;
 			};
 
 			/* Eeprom m24c64x for imx663 */
@@ -529,6 +547,8 @@
 					"regulator";
 				power-down-seq-delays-us =
 					<1000>;
+
+				i2c-lock-group-id = <1>;
 			};
 
 			/* Eeprom m24c64x for imx386 */
@@ -567,6 +587,8 @@
 					"regulator";
 				power-down-seq-delays-us =
 					<1000>;
+
+				i2c-lock-group-id = <2>;
 			};
 
 			/* Eeprom sem1215sa for imx586*/
@@ -616,6 +638,8 @@
 					<1000
 					 4000
 					 1000>;
+
+				i2c-lock-group-id = <3>;
 			};
 
 			/* Actuator ak7377 for gn1*/
@@ -665,6 +689,11 @@
 					<2000
 					 1000
 					 1000>;
+
+				/* Thread priority */
+				transaction-thread-priority = <99>;
+
+				i2c-lock-group-id = <0>;
 			};
 
 			/* Actuator sem1215sa for imx586*/
@@ -714,6 +743,11 @@
 					<1000
 					 4000
 					 1000>;
+
+				/* Thread priority */
+				transaction-thread-priority = <99>;
+
+				i2c-lock-group-id = <3>;
 			};
 
 			/* Ois lc898128 for gn1*/
@@ -763,6 +797,11 @@
 					<2000
 					 1000
 					 1000>;
+
+				/* Thread priority */
+				transaction-thread-priority = <99>;
+
+				i2c-lock-group-id = <0>;
 			};
 
 			/* Ois sem1215sa for imx586*/
@@ -812,6 +851,11 @@
 					<1000
 					 4000
 					 1000>;
+
+				/* Thread priority */
+				transaction-thread-priority = <99>;
+
+				i2c-lock-group-id = <3>;
 			};
 
 			flash0: flash@0 {

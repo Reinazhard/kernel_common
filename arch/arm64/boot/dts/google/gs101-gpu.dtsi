@@ -65,7 +65,7 @@
 		physical-memory-group-manager = <&mali_mgm>;
 
 		/* Priority control */
-		priority-control-manager = <&mali_pcm>;
+		/*priority-control-manager = <&mali_pcm>;*/
 
 		/* Clocks */
 		gpu0_cmu_cal_id = <ACPM_DVFS_G3DL2>;
@@ -91,14 +91,14 @@
 		>;
 
 		/* DVFS v2 operating points */
-		gpu_dvfs_table_size_v2 = <12 10>; /*<row col>*/
+		gpu_dvfs_table_size_v2 = <11 10>; /*<row col>*/
 		gpu_dvfs_table_v2 = <
 			/*
 			 *gpu0    gpu1   down     up    hys      int      mif   little  middle   big
 			 * clk     clk   util   util  ticks      min      min      min     min   max
 			 *--------------------------------------------------------------------------
 			 */
-			996000  848000     78    100      1        0   845000        0       0     0
+			996000  848000     78    100      1   533000  3172000        0       0     0
 			996000  762000     78     99      1        0   845000        0       0     0
 			885000  701000     73     98      1        0   845000        0       0     0
 			750000  572000     78     96      2        0        0        0       0     0
@@ -108,14 +108,15 @@
 			603000  351000     70     90      4        0        0        0       0     0
 			434000  302000     60     90      3        0        0        0       0     0
 			434000  251000     50     80      2        0        0        0       0     0
-			302000  202000     45     67      1        0        0        0       0     0
-			302000  151000      0     70      1        0        0        0       0     0
+			302000  202000     0      67      1        0        0        0       0     0
 		>;
 
+		/* DVFS step up value */
+		gpu_dvfs_step_up_val = <2>;
+
 		/* DVFS Level locks */
-		gpu_dvfs_max_freq = <800000>;
-		gpu_dvfs_min_freq = <250000>;
-		gpu_dvfs_min_freq_compute = <450000>; /* When compute work detected */
+		gpu_dvfs_max_freq = <900000>;
+		gpu_dvfs_min_freq = <0>;
 
 		/* QOS */
 		gpu_dvfs_qos_bts_scenario = "g3d_performance";

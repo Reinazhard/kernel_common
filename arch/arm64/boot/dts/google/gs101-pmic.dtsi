@@ -70,35 +70,35 @@
 				       /* 0 : 2 clock, 1 : 32 clock */
 		b2_ocp_warn_dvs_mask = <0>; /* ocp warn mask when dvs */
 					    /* 0 : not masked, 1 : masked  */
-		b2_ocp_warn_lvl = <8>; /* 12.0A */
+		b2_ocp_warn_lvl = <0>; /* 12.0A */
 
 		b3_ocp_warn_en = <1>; /* 1 : enable, 0 : disable */
 		b3_ocp_warn_cnt = <0>; /* 0 : 2 clock, 1 : 32 clock */
 		b3_ocp_warn_dvs_mask = <0>; /* 0 : not masked, 1 : masked  */
-		b3_ocp_warn_lvl = <13>; /* 7.0A */
+		b3_ocp_warn_lvl = <0>; /* 8.0A */
 
 		b10_ocp_warn_en = <1>; /* 1 : enable, 0 : disable */
 		b10_ocp_warn_cnt = <0>; /* 0 : 2 clock, 1 : 32 clock */
 		b10_ocp_warn_dvs_mask = <0>; /* 0 : not masked, 1 : masked  */
-		b10_ocp_warn_lvl = <13>; /* 10.5A */
+		b10_ocp_warn_lvl = <0>;	/* 12A */
 
 		b2_soft_ocp_warn_en = <1>; /* 1 : enable, 0 : disable */
 		b2_soft_ocp_warn_cnt = <0>; /* 0 : 2 clock, 1 : 32 clock */
 		b2_soft_ocp_warn_dvs_mask = <0>; /* 0 : not masked */
 						 /* 1 : masked	   */
-		b2_soft_ocp_warn_lvl = <8>; /* 12.0A */
+		b2_soft_ocp_warn_lvl = <20>;		/* 9.0A */
 
 		b3_soft_ocp_warn_en = <1>; /* 1 : enable, 0 : disable */
 		b3_soft_ocp_warn_cnt = <0>; /* 0 : 2 clock, 1 : 32 clock */
 		b3_soft_ocp_warn_dvs_mask = <0>; /* 0 : not masked */
 						 /* 1 : masked	   */
-		b3_soft_ocp_warn_lvl = <13>; /* 7.0A */
+		b3_soft_ocp_warn_lvl = <0>; /* 7.0A */
 
 		b10_soft_ocp_warn_en = <1>; /* 1 : enable, 0 : disable */
 		b10_soft_ocp_warn_cnt = <0>; /* 0 : 2 clock, 1 : 32 clock */
 		b10_soft_ocp_warn_dvs_mask = <0>; /* 0 : not masked */
 						  /* 1 : masked	    */
-		b10_soft_ocp_warn_lvl = <20>; /* 8.5A */
+		b10_soft_ocp_warn_lvl = <0>; /* 8.5A */
 
 		/* BUCK OCP Detection */
 		buck_ocp_ctrl1 = <0xBB>;
@@ -607,16 +607,16 @@
 			sample-rate-uhz = <125000000>;
 			sample-rate-external-uhz = <30512500>;
 
-			/* 15 minutes was selected as the spec
-			 * for the maximum sample rate (1ksps)
+			/* 120 minutes was selected as the spec
+			 * for the sample rate (125sps)
 			 *
 			 * Note, this can be verified based on the
 			 * number of bits in the ACC registers.
-			 * ACC_COUNT is 21 bits. Thus,
-			 * 2^21 - 1 = 1048575 ==> 1048.575 seconds
-			 * ==> 17.47625 minutes
+			 * ACC_COUNT is 20 bits. Thus,
+			 * 2^20 - 1 = 1048575 ==> 8388.6 seconds
+			 * ==> 139.81 minutes
 			 */
-			max-refresh-time-ms = <(15 * 60 * 1000)>;
+			max-refresh-time-ms = <(120 * 60 * 1000)>;
 
 			channels {
 				ch1: channel@0 {
@@ -731,12 +731,12 @@
 		b2_ocp_warn_en = <1>; /* 1 : enable, 0 : disable */
 		b2_ocp_warn_cnt = <0>; /* 0 : 2 clock, 1 : 32 clock */
 		b2_ocp_warn_dvs_mask = <0>; /* 0 : not masked, 1 : masked  */
-		b2_ocp_warn_lvl = <8>; /* 12.0A */
-		b2_soft_ocp_warn_en = <1>; /* 1 : enable, 0 : disable */
+		b2_ocp_warn_lvl = <0>; /* 12.0A */
+		b2_soft_ocp_warn_en = <0>; /* 1 : enable, 0 : disable */
 		b2_soft_ocp_warn_cnt = <0>; /* 0 : 2 clock, 1 : 32 clock */
 		b2_soft_ocp_warn_dvs_mask = <0>; /* 0 : not masked */
 						 /* 1 : masked	   */
-		b2_soft_ocp_warn_lvl = <8>; /* 12.0A */
+		b2_soft_ocp_warn_lvl = <0>; /* 12.0A */
 
 		/* BUCK OCP Detection */
 		buck_ocp_ctrl1 = <0xBB>;
@@ -1095,16 +1095,16 @@
 			sample-rate-uhz = <125000000>;
 			sample-rate-external-uhz = <30512500>;
 
-			/* 15 minutes was selected as the spec
-			 * for the maximum sample rate (1ksps)
+			/* 120 minutes was selected as the spec
+			 * for the sample rate (125sps)
 			 *
 			 * Note, this can be verified based on the
 			 * number of bits in the ACC registers.
-			 * ACC_COUNT is 21 bits. Thus,
-			 * 2^21 - 1 = 1048575 ==> 1048.575 seconds
-			 * ==> 17.47625 minutes
+			 * ACC_COUNT is 20 bits. Thus,
+			 * 2^20 - 1 = 1048575 ==> 8388.6 seconds
+			 * ==> 139.81 minutes
 			 */
-			max-refresh-time-ms = <(15 * 60 * 1000)>;
+			max-refresh-time-ms = <(120 * 60 * 1000)>;
 
 			channels {
 				ch9: channel@0 {
@@ -1199,4 +1199,5 @@
 &acpm_mbox_test {
 	main-pmic = <&s2mpg10mfd>;
 	sub-pmic = <&s2mpg11mfd>;
+	acpm-ipc-channel = <2>;
 };

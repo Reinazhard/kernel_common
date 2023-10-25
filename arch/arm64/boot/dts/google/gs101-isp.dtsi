@@ -533,6 +533,9 @@
 
 		iommus = <&sysmmu_ipp>;
 		samsung,iommu-group = <&iommu_group_isp>;
+
+		/* Adjust Thread priority */
+		transaction-thread-priority = <99>;
 	};
 
 	lwis_gtnr_align: lwis_gtnr_align@1AC80000 {
@@ -595,7 +598,8 @@
 			<0x0 0x1BED4000 0xA00>,     /* TNR SSMT D5 */
 			<0x0 0x1BEE4000 0xA00>,     /* TNR SSMT D6 */
 			<0x0 0x1BEF4000 0xA00>,     /* TNR SSMT D7 */
-			<0x0 0x1BC030E4 0x8>;       /* TNR_QCH */
+			<0x0 0x1BC030E4 0x8>,       /* TNR_QCH */
+			<0x0 0x1BC20400 0x4>;       /* TNR SYSREG */
 		reg-names =
 			"tnr",
 			"tnr_ssmt_d0",
@@ -606,7 +610,8 @@
 			"tnr_ssmt_d5",
 			"tnr_ssmt_d6",
 			"tnr_ssmt_d7",
-			"tnr_qch";
+			"tnr_qch",
+			"tnr_sysreg";
 
 		clocks = <&clock UMUX_CLKCMU_TNR_BUS>;
 		clock-names = "UMUX_CLKCMU_TNR_BUS";
@@ -669,6 +674,9 @@
 
 		iommus = <&sysmmu_g3aa>;
 		samsung,iommu-group = <&iommu_group_isp>;
+
+		/* Adjust Thread priority */
+		transaction-thread-priority = <99>;
 	};
 
 	lwis_itp: lwis_itp@1B450000 {
@@ -729,6 +737,8 @@
 			<&sysmmu_mcsc0>;
 		samsung,iommu-group = <&iommu_group_isp>;
 		samsung,tzmp = "true";
+
+		transaction-thread-priority = <99>;
 	};
 
 	lwis_mcsc: lwis_mcsc@1B760000 {

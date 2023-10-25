@@ -20,14 +20,14 @@
 
 				/* charge table */
 				google,chg-temp-limits = <0 100 200 420 460 480 550>;
-				google,chg-cv-limits = <4200000 4300000 4450000>;
+				google,chg-cv-limits = <4200000 4300000 4350000 4480000>;
 				google,chg-cc-limits = <
-					30  10   0
-					50  30  30
-					100  70  50
-					80  50  50
-					50  50   0
-					30   0   0
+					50   30    0   0
+					70   30   30  30
+				   120  120  120  50
+				   100  100  100  50
+					50   50    0   0
+					30    0    0   0
 				>;
 
 				google,ttf-temp-idx= <2>;
@@ -42,7 +42,7 @@
 				google,fv-uv-margin-dpct = <1025>;
 				/* tier switch */
 				google,cv-range-accuracy = <20000>;
-				google,cv-otv-margin = <25000>;
+				google,cv-otv-margin = <12000>;
 				google,cv-debounce-cnt = <3>;
 				google,cv-tier-ov-cnt = <10>;
 				google,cv-tier-switch-cnt = <3>;
@@ -54,20 +54,23 @@
 				google,chg-rest-soc = <80>;
 				/* TRICKLE-DEFEND threshold */
 				google,bd-trickle-recharge-soc = <80>;
-				/* Enable TRICKLE-DEFEND */
-				google,bd-trickle-enable;
+				/* Disable TRICKLE-DEFEND, b/259428308 */
+				/* google,bd-trickle-enable; */
+				/* Battery virtual sensor */
+				google,batt-vs-tz-name = "batt_vs";
 
 				/* record over temperature time */
 				google,temp-record-thr = <300 350 400>;
 				google,soc-record-thr = <90 90 95>;
 
-				google,bhi-algo-ver = <1>;
 				google,bhi-fcn-count = <3>;
-				google,bhi-status-marginal = <80>;
-				google,bhi-status-need-rep = <70>;
+				google,bhi-status-marginal = <79>;
+				google,bhi-status-need-rep = <79>;
+				google,bhi-cycle-grace = <200>;
 
 				#thermal-sensor-cells = <0>;
 				#cooling-cells = <2>;
+				google,dc-irdrop;
 			};
 
 			google_bms {

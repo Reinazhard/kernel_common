@@ -7,7 +7,6 @@
  */
 
 #include <dt-bindings/pinctrl/samsung.h>
-#include <dt-bindings/pinctrl/gs101.h>
 
 &pinctrl_0 {
 	ap_gsc_irq: ap_gsc_irq {
