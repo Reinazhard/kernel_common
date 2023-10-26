@@ -84,7 +84,6 @@ struct exynos_pm_qos_request exynos_pcie_int_qos[MAX_RC_NUM];
 #define to_pci_dev_from_dev(dev) container_of((dev), struct pci_dev, dev)
 #if IS_ENABLED(CONFIG_GS_S2MPU) || IS_ENABLED(CONFIG_EXYNOS_PCIE_IOMMU)
 static const struct dma_map_ops pcie_dma_ops;
-static struct device fake_dma_dev;
 //static void exynos_d3_sleep_hook(void *unused, struct pci_dev *dev,
 //				 unsigned int *delay);
 
@@ -882,6 +881,51 @@ static void link_stats_log_link_up(struct exynos_pcie *pcie, u32 link_up_time)
 			      (100 - NEW_DATA_AVERAGE_WEIGHT) +
 			      link_up_time * NEW_DATA_AVERAGE_WEIGHT, 100);
 }
+
+#if !IS_ENABLED(CONFIG_SOC_ZUMA)
+static void link_stats_log_pll_lock(struct exynos_pcie *pcie, u32 pll_lock_time)
+{
+	pcie->link_stats.pll_lock_time_avg =
+	    DIV_ROUND_CLOSEST(pcie->link_stats.pll_lock_time_avg *
+			      (100 - NEW_DATA_AVERAGE_WEIGHT) +
+			      pll_lock_time * NEW_DATA_AVERAGE_WEIGHT, 100);
+}
+
+static int check_exynos_pcie_reg_status(struct exynos_pcie *exynos_pcie,
+					void __iomem *base, int offset,
+					u32 mask, u32 mask_value, int *cnt)
+{
+	int i;
+	bool status = false;
+	u32 value;
+	ktime_t timestamp = ktime_get();
+
+	for (i = 0; i < 10000; i++) {
+		udelay(1);
+		value = readl(base + offset);
+
+		status = (value & mask) == mask_value;
+		if (status)
+			break;
+
+	}
+	*cnt = i;
+
+	timestamp = ktime_sub(ktime_get(), timestamp);
+	dev_dbg(exynos_pcie->pci->dev, "elapsed time: %lld uS\n", ktime_to_us(timestamp));
+	logbuffer_log(exynos_pcie->log, "elapsed time: %lld uS", ktime_to_us(timestamp));
+
+	if (status) {
+		dev_dbg(exynos_pcie->pci->dev, "status %#x passed cnt=%d\n", offset, i);
+		logbuffer_log(exynos_pcie->log, "status %#x passed cnt=%d", offset, i);
+	} else {
+		logbuffer_logk(exynos_pcie->log, LOGLEVEL_ERR,
+			       "status %#x=%#x failed", offset, value);
+	}
+
+	return status;
+}
+#endif
 
 static ssize_t link_down_irqs_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
@@ -2081,6 +2125,7 @@ static int exynos_pcie_rc_get_resource(struct platform_device *pdev,
 		return ret;
 	}
 
+#if !IS_ENABLED(CONFIG_SOC_ZUMA)
 	temp_rsc = platform_get_resource_byname(pdev, IORESOURCE_MEM, "soc");
 	exynos_pcie->soc_base = devm_ioremap_resource(&pdev->dev, temp_rsc);
 	if (IS_ERR(exynos_pcie->soc_base)) {
@@ -2088,10 +2133,11 @@ static int exynos_pcie_rc_get_resource(struct platform_device *pdev,
 
 		return ret;
 	}
+#endif
 
 	temp_rsc = platform_get_resource_byname(pdev, IORESOURCE_MEM, "udbg");
 	exynos_pcie->udbg_base = devm_ioremap_resource(&pdev->dev, temp_rsc);
-	if (IS_ERR(exynos_pcie->udbg_base)) {
+	if (temp_rsc && IS_ERR(exynos_pcie->udbg_base)) {
 		ret = PTR_ERR(exynos_pcie->udbg_base);
 
 		return ret;
@@ -2401,6 +2447,7 @@ void exynos_pcie_rc_register_dump(int ch_num)
 
 	pr_err("\n");
 
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 	/* 100MHz source Reference clock (external pll) setting & internal state monitor */
 	for (i = 0xC700; i < 0xC720; i += 0x10) {
 		pr_err("UDBG 0x%04x:    0x%08x    0x%08x    0x%08x    0x%08x\n",
@@ -2420,6 +2467,25 @@ void exynos_pcie_rc_register_dump(int ch_num)
 				exynos_udbg_read(exynos_pcie, i + 0x8),
 				exynos_udbg_read(exynos_pcie, i + 0xC));
 	}
+#else
+	/* ---------------------- */
+	/* UDBG: 0xA000 ~ 0xAFFF */
+	/* ---------------------- */
+	if (!IS_ERR(exynos_pcie->udbg_base)) {
+		exynos_udbg_write(exynos_pcie, 0x13, 0xC604); /* change udbg read mode */
+		pr_err("[Print UDBG region]\n");
+		pr_err("offset: 0x0     0x4     0x8     0xC\n");
+		for (i = 0xA000; i < 0xB000; i += 0x10) {
+			pr_err("UDBG 0x%04x:    0x%08x    0x%08x    0x%08x    0x%08x\n",
+					i,
+					exynos_udbg_read(exynos_pcie, i + 0x0),
+					exynos_udbg_read(exynos_pcie, i + 0x4),
+					exynos_udbg_read(exynos_pcie, i + 0x8),
+					exynos_udbg_read(exynos_pcie, i + 0xC));
+		}
+		pr_err("\n");
+	}
+#endif
 
 	/* ---------------------- */
 	/* PHY PCS : 0x0 ~ 0x19C */
@@ -2690,6 +2756,7 @@ void exynos_pcie_rc_assert_phy_reset(struct pcie_port *pp)
 	exynos_pcie_rc_use_ia(exynos_pcie);
 }
 
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 static void exynos_pcie_ch2_phy_disable(struct exynos_pcie *exynos_pcie)
 {
 	void __iomem *phy_base_regs = ioremap(0x131B0000, 0x2000);
@@ -2734,6 +2801,7 @@ static void exynos_pcie_ch2_phy_disable(struct exynos_pcie *exynos_pcie)
 		regmap_update_bits(exynos_pcie->pmureg, 0x3ECC,
 				   PCIE_PHY_CONTROL_MASK, PCIE_PHY_ISOLATION);
 }
+#endif
 
 void exynos_pcie_rc_resumed_phydown(struct pcie_port *pp)
 {
@@ -2753,10 +2821,12 @@ void exynos_pcie_rc_resumed_phydown(struct pcie_port *pp)
 	if (exynos_pcie->phy_ops.phy_all_pwrdn)
 		exynos_pcie->phy_ops.phy_all_pwrdn(exynos_pcie, exynos_pcie->ch_num);
 
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 	if (exynos_pcie->ch_num == 1) {
 		dev_info(dev, "Disable PCIE2 PHY\n");
 		exynos_pcie_ch2_phy_disable(exynos_pcie);
 	}
+#endif
 
 	exynos_pcie_rc_phy_clock_enable(pp, PCIE_DISABLE_CLOCK);
 	exynos_pcie_rc_clock_enable(pp, PCIE_DISABLE_CLOCK);
@@ -3169,10 +3239,75 @@ static int exynos_pcie_rc_establish_link(struct pcie_port *pp)
 	u32 val, busdev;
 	int count = 0, try_cnt = 0;
 	unsigned int save_before_state = 0xff;
-	//u32 i;
-	//u32 pll_lock = 0, cdr_lock = 0, oc_done = 0;
+#if !IS_ENABLED(CONFIG_SOC_ZUMA)
+	void __iomem *phy_base_regs = exynos_pcie->phy_base;
+	bool pll_lock, cdr_lock, oc_done;
+	int lock_cnt;
+#endif
 retry:
+#if !IS_ENABLED(CONFIG_SOC_ZUMA)
+	logbuffer_logk(exynos_pcie->log, LOGLEVEL_ERR, "OC Initial Status check: 0x5FC(0x%x)\n",
+			exynos_phy_read(exynos_pcie, 0x5FC));
 
+	/* to call eyxnos_pcie_rc_pcie_phy_config() in cal.c file */
+	exynos_pcie_rc_assert_phy_reset(pp);
+
+	/* check pll lock */
+	pll_lock = check_exynos_pcie_reg_status(exynos_pcie, phy_base_regs,
+						0x03F0, BIT(3), BIT(3), &lock_cnt);
+
+	/* check cdr lock */
+	cdr_lock = check_exynos_pcie_reg_status(exynos_pcie, phy_base_regs,
+						0x0E0C, BIT(2), BIT(2), &lock_cnt);
+	if (cdr_lock)
+		link_stats_log_pll_lock(exynos_pcie, lock_cnt);
+
+	/* check offset calibration */
+	oc_done = check_exynos_pcie_reg_status(exynos_pcie, phy_base_regs,
+					       0x0DE8, 0xf, 0xf, &lock_cnt);
+	if (!oc_done)
+		dev_err(dev, "OC Fail: PLL_LOCK:%d, CDR_LOCK:%d, OC:%d\n",
+			pll_lock, cdr_lock, oc_done);
+
+	logbuffer_log(exynos_pcie->log,
+		      "PLL_LOCK:%d, CDR_LOCK:%d, OC:%d",
+		      pll_lock, cdr_lock, oc_done);
+
+	/* Soft Power RST */
+	val = exynos_elbi_read(exynos_pcie, PCIE_SOFT_RESET);
+	val &= ~SOFT_PWR_RESET;
+	exynos_elbi_write(exynos_pcie, val, PCIE_SOFT_RESET);
+	/* old: udelay(20); */
+	mdelay(1);
+	val |= SOFT_PWR_RESET;
+	exynos_elbi_write(exynos_pcie, val, PCIE_SOFT_RESET);
+
+	val = exynos_phy_read(exynos_pcie, 0x0E18) & (1 << 7);
+	if (!val) {
+		logbuffer_logk(exynos_pcie->log, LOGLEVEL_ERR, "OC Fail after soft power reset!");
+		logbuffer_logk(exynos_pcie->log, LOGLEVEL_ERR,
+			      "PMA Info : 0x760(0x%x), 0xE0C(0x%x), 0x3F0(0x%x), 0xFC0(0x%x)",
+			      exynos_phy_read(exynos_pcie, 0x760),
+			      exynos_phy_read(exynos_pcie, 0xE0C),
+			      exynos_phy_read(exynos_pcie, 0x3F0),
+			      exynos_phy_read(exynos_pcie, 0xFC0));
+	}
+	/* Device Type (Sub Controller: DEVICE_TYPE offset: 0x80  */
+	exynos_elbi_write(exynos_pcie, 0x04, 0x80);
+
+	/* NON-sticky RST */
+	val = exynos_elbi_read(exynos_pcie, PCIE_SOFT_RESET);
+	val |= SOFT_NON_STICKY_RESET;
+	exynos_elbi_write(exynos_pcie, val, PCIE_SOFT_RESET);
+	usleep_range(10, 12);
+	val &= ~SOFT_NON_STICKY_RESET;
+	exynos_elbi_write(exynos_pcie, val, PCIE_SOFT_RESET);
+	mdelay(1);
+	val |= SOFT_NON_STICKY_RESET;
+	exynos_elbi_write(exynos_pcie, val, PCIE_SOFT_RESET);
+#endif
+
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 	/* to call eyxnos_pcie_rc_pcie_phy_config() in cal.c file */
 	exynos_pcie_rc_assert_phy_reset(pp);
 
@@ -3188,6 +3323,7 @@ retry:
 	}
 
 	exynos_phy_write(exynos_pcie, 0x0, 0x32C);
+#endif
 
 	/* EQ Off */
 	exynos_pcie_rc_wr_own_conf(pp, 0x890, 4, 0x12000);
@@ -3455,7 +3591,9 @@ int exynos_pcie_rc_poweron(int ch_num)
 		pinctrl_select_state(exynos_pcie->pcie_pinctrl,
 				     exynos_pcie->pin_state[PCIE_PIN_ACTIVE]);
 
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 		exynos_soc_write(exynos_pcie, 0x15, 0x4000);
+#endif
 
 		/* phy all power down clear */
 		if (exynos_pcie->phy_ops.phy_all_pwrdn_clear)
@@ -3509,8 +3647,6 @@ int exynos_pcie_rc_poweron(int ch_num)
 				if (exynos_pcie->ep_device_type == EP_BCM_WIFI) {
 					set_dma_ops(&exynos_pcie->ep_pci_dev->dev, &pcie_dma_ops);
 					dev_info(dev, "Wifi DMA operations are changed\n");
-					memcpy(&fake_dma_dev, exynos_pcie->pci->dev,
-					       sizeof(fake_dma_dev));
 				}
 			}
 #endif
@@ -3629,11 +3765,12 @@ void exynos_pcie_rc_poweroff(int ch_num)
 		logbuffer_log(exynos_pcie->log, "%s: Set PERST to LOW, gpio val = %d",
 			      __func__, gpio_get_value(exynos_pcie->perst_gpio));
 
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 		// level clk switching for stability
 		val = exynos_soc_read(exynos_pcie, 0x4000);
 		val &= ~(0x3);
 		exynos_soc_write(exynos_pcie, val, 0x4000); //sw mode and select osc_clk
-
+#endif
 
 		/* LTSSM disable */
 		exynos_elbi_write(exynos_pcie, PCIE_ELBI_LTSSM_DISABLE, PCIE_APP_LTSSM_ENABLE);
@@ -5170,9 +5307,6 @@ static int exynos_pcie_rc_probe(struct platform_device *pdev)
 #if IS_ENABLED(CONFIG_GS_S2MPU)
 	s2mpu_dn = of_parse_phandle(np, "s2mpu", 0);
 	if (s2mpu_dn) {
-		memcpy(&fake_dma_dev, &pdev->dev, sizeof(fake_dma_dev));
-		fake_dma_dev.dma_ops = NULL;
-
 		exynos_pcie->s2mpu = s2mpu_fwnode_to_info(&s2mpu_dn->fwnode);
 		if (!exynos_pcie->s2mpu) {
 			dev_err(&pdev->dev, "Failed to get S2MPU\n");

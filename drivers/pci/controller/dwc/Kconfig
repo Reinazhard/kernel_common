@@ -13,6 +13,13 @@ config PCI_EXYNOS_GS
 	  DesignWare hardware and therefore the driver re-uses the DesignWare
 	  core functions to implement the driver.
 
+config PCI_EXYNOS_CAL_ZUMA
+	tristate "Samsung Exynos PCIe PHY CAL for ZUMA"
+	depends on PCI
+	depends on OF
+	depends on PCI_MSI_IRQ_DOMAIN
+	select PCIE_DW_HOST
+
 config PCI_EXYNOS_CAL_GS101
 	tristate "Samsung Exynos PCIe PHY CAL for GS101"
 	depends on PCI
@@ -20,8 +27,8 @@ config PCI_EXYNOS_CAL_GS101
 	depends on PCI_MSI_IRQ_DOMAIN
 	select PCIE_DW_HOST
 
-config PCI_EXYNOS_CAL_ZUMA
-	tristate "Samsung Exynos PCIe PHY CAL for ZUMA"
+config PCI_EXYNOS_CAL_GS201
+	tristate "Samsung Exynos PCIe PHY CAL for GS201"
 	depends on PCI
 	depends on OF
 	depends on PCI_MSI_IRQ_DOMAIN

@@ -137,7 +137,11 @@
 #define PCIE_CAP_CPL_TIMEOUT_VAL_MASK	0xf
 #define PCIE_CAP_CPL_TIMEOUT_VAL_44MS_DEFALT	0x0
 #define PCIE_CAP_CPL_TIMEOUT_VAL_6_2MS	0x2
+#if !IS_ENABLED(CONFIG_SOC_ZUMA)
+#define PCIE_LINK_L1SS_CONTROL		0x19C
+#else
 #define PCIE_LINK_L1SS_CONTROL		0x168
+#endif
 #define PORT_LINK_TCOMMON_32US		(0x20 << 8)
 #define LTR_L12_THRESHOLD_SCALE_1NS	(0x0 << 29) /* Latency Tolerance Reporting */
 #define LTR_L12_THRESHOLD_SCALE_32NS	(0x1 << 29)
@@ -145,7 +149,11 @@
 #define LTR_L12_THRESHOLD_SCALE_32768NS	(0x3 << 29)
 #define LTR_L12_THRESHOLD_VALUE_160	(0xa0 << 16)
 #define PORT_LINK_L12_LTR_THRESHOLD     (0x40a0 << 16)
+#if !IS_ENABLED(CONFIG_SOC_ZUMA)
+#define PCIE_LINK_L1SS_CONTROL2		0x1A0
+#else
 #define PCIE_LINK_L1SS_CONTROL2		0x16C
+#endif
 #define PORT_LINK_L1SS_ENABLE		(0xf << 0)
 #define PORT_LINK_TPOWERON_90US		(0x49 << 0)
 #define PORT_LINK_TPOWERON_130US	(0x69 << 0)
@@ -313,6 +321,24 @@
 
 #define EXYNOS_IP_VER_OF_WHI   0x984500
 
+#if !IS_ENABLED(CONFIG_SOC_ZUMA)
+#define EOM_PH_SEL_MAX		72
+#define EOM_DEF_VREF_MAX	256
+
+#define RX_CDR_LOCK			0xE0C
+#define RX_EFOM_DONE			0xE0C
+#define RX_EFOM_BIT_WIDTH_SEL		0xCA8
+#define ANA_RX_DFE_EOM_PI_STR_CTRL	0x988
+#define ANA_RX_DFE_EOM_PI_DIVSEL_G12	0x980
+#define ANA_RX_DFE_EOM_PI_DIVSEL_G34	0x984
+#define RX_EFOM_EOM_PH_SEL		0xCC4
+#define RX_EFOM_MODE			0xCA0
+#define MON_RX_EFOM_ERR_CNT_13_8	0xEBC
+#define MON_RX_EFOM_ERR_CNT_7_0		0xEC0
+#define RX_EFOM_DFE_VREF_CTRL		0xCB8
+#define RX_EFOM_NUMOF_SMPL_13_8		0xCAC
+#define RX_EFOM_NUMOF_SMPL_7_0		0xCB0
+#else
 #define EOM_PH_SEL_MAX                  128
 #define EOM_DEF_VREF_MAX                256
 #define VREF_MAX                        256
@@ -339,6 +365,7 @@
 #define RX_EFOM_START                   0x1540
 #define RX_EFOM_NUMOF_SMPL_13_8         0xCAC
 #define RX_EFOM_NUMOF_SMPL_7_0          0xCB0
+#endif
 
 struct pcie_eom_result {
 	unsigned int phase;
