@@ -12,7 +12,7 @@
 # along with this program; if not, you can access it online at
 # http://www.gnu.org/licenses/gpl-2.0.html.
 #
-#
+# SPDX-License-Identifier: GPL-2.0
 
 load(
     "//build/kernel/kleaf:kernel.bzl",
@@ -26,26 +26,25 @@ _midgard_modules = [
 ]
 
 kernel_module(
-    name = "mali_kbase.cloudripper",
+    name = "mali_kbase",
     srcs = glob([
         "**/*.c",
         "**/*.h",
         "**/*Kbuild",
         "**/*Makefile",
     ]) + [
-        "//common:kernel_headers",
-        "//common-modules/mali:headers",
-        "//common-modules/mali/drivers/gpu/arm/arbitration",
-        "//common-modules/mali/drivers/xen/arm:xen",
         "//private/google-modules/gpu/common:headers",
+        "//private/google-modules/soc/gs:gs_soc_headers",
     ],
     outs = _midgard_modules,
-    kernel_build = "//private/gs-google:cloudripper",
+    kernel_build = "//private/google-modules/soc/gs:gs_kernel_build",
     visibility = [
-        "//private/gs-google:__pkg__",
+        "//private/devices/google:__subpackages__",
+        "//private/google-modules/soc/gs:__pkg__",
     ],
     deps = [
         "//private/google-modules/gpu/mali_pixel",
+        "//private/google-modules/soc/gs:gs_soc_module",
     ],
 )
 
