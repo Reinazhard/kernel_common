@@ -127,7 +127,7 @@ const static struct dev_pm_ops aoc_core_pm_ops = {
 
 static int aoc_bus_match(struct device *dev, struct device_driver *drv);
 static int aoc_bus_probe(struct device *dev);
-static int aoc_bus_remove(struct device *dev);
+static void aoc_bus_remove(struct device *dev);
 
 static void aoc_configure_sysmmu_fault_handler(struct aoc_prvdata *p);
 static void aoc_configure_sysmmu(struct aoc_prvdata *p, const struct firmware *fw);
@@ -1106,18 +1106,15 @@ static int aoc_bus_probe(struct device *dev)
 	return driver->probe(the_dev);
 }
 
-static int aoc_bus_remove(struct device *dev)
+static void aoc_bus_remove(struct device *dev)
 {
 	struct aoc_service_dev *aoc_dev = AOC_DEVICE(dev);
 	struct aoc_driver *drv = AOC_DRIVER(dev->driver);
-	int ret = -EINVAL;
 
 	pr_notice("bus remove %s\n", dev_name(dev));
 
 	if (drv->remove)
-		ret = drv->remove(aoc_dev);
-
-	return ret;
+		drv->remove(aoc_dev);
 }
 
 int aoc_driver_register(struct aoc_driver *driver)

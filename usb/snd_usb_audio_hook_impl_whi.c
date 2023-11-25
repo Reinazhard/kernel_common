@@ -57,19 +57,8 @@ static int snd_usb_audio_vendor_set_interface(struct usb_device *udev,
 	return 0;
 }
 
-static int snd_usb_audio_vendor_set_rate(struct usb_interface *intf, int iface, int rate,
-					 int alt)
-{
-	return 0;
-}
-
-static int snd_usb_audio_vendor_set_pcm_buf(struct usb_device *udev, int iface)
-{
-	return 0;
-}
-
 static int snd_usb_audio_vendor_set_pcm_intf(struct usb_interface *intf, int iface, int alt,
-					     int direction)
+					     int direction, struct snd_usb_substream *subs)
 {
 	struct usb_device *udev;
 	struct xhci_hcd *xhci;
@@ -139,28 +128,12 @@ static int snd_usb_audio_vendor_set_pcm_connection(struct usb_device *udev,
 	return 0;
 }
 
-static int snd_usb_audio_vendor_set_pcm_binterval(struct audioformat *fp,
-						  struct audioformat *found,
-						  int *cur_attr, int *attr)
-{
-	return 0;
-}
-
-static int snd_usb_audio_vendor_usb_add_ctls(struct snd_usb_audio *chip)
-{
-	return 0;
-}
-
 static struct snd_usb_audio_vendor_ops snd_usb_ops = {
 	.connect = snd_usb_audio_vendor_connect,
 	.disconnect = snd_usb_audio_vendor_disconnect,
 	.set_interface = snd_usb_audio_vendor_set_interface,
-	.set_rate = snd_usb_audio_vendor_set_rate,
-	.set_pcm_buf = snd_usb_audio_vendor_set_pcm_buf,
 	.set_pcm_intf = snd_usb_audio_vendor_set_pcm_intf,
 	.set_pcm_connection = snd_usb_audio_vendor_set_pcm_connection,
-	.set_pcm_binterval = snd_usb_audio_vendor_set_pcm_binterval,
-	.usb_add_ctls = snd_usb_audio_vendor_usb_add_ctls,
 };
 
 int snd_usb_audio_vendor_helper_init(void)
