@@ -134,7 +134,7 @@ static DEFINE_IDA(cpufreq_ida);
 static DEFINE_MUTEX(cooling_list_lock);
 static LIST_HEAD(cpufreq_cdev_list);
 
-static int init_dsu_bci_constraint_table_dt(struct exynos_cpu_cooling_device *cpufreq_cdev,
+static int __maybe_unused init_dsu_bci_constraint_table_dt(struct exynos_cpu_cooling_device *cpufreq_cdev,
                                     struct device_node *dn)
 {
 	struct exynos_cpu_dsu_bci_freq *table;
@@ -1229,6 +1229,7 @@ __exynos_cpu_cooling_register(struct device_node *np,
 			i, power);
 	}
 
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 	if (init_dsu_bci_constraint_table_dt(cpufreq_cdev, np) == 0) {
 		exynos_pm_qos_add_request(&cpufreq_cdev->dsu_qos_max, PM_QOS_DSU_THROUGHPUT_MAX,
 					  INT_MAX);
@@ -1239,6 +1240,9 @@ __exynos_cpu_cooling_register(struct device_node *np,
 	} else {
 		cpufreq_cdev->apply_dsu_bci_constraints = false;
 	}
+#else 
+	cpufreq_cdev->apply_dsu_bci_constraints = false;
+#endif
 
 	return cdev;
 

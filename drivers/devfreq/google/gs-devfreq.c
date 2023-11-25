@@ -32,7 +32,11 @@
 #include <linux/of_platform.h>
 #include <trace/events/power.h>
 #include <trace/hooks/systrace.h>
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 #include <dt-bindings/soc/google/zuma-devfreq.h>
+#else
+#include <dt-bindings/soc/google/gs101-devfreq.h>
+#endif
 #include "../../soc/google/cal-if/acpm_dvfs.h"
 #include <soc/google/exynos-pd.h>
 

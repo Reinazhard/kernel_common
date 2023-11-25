@@ -15,11 +15,17 @@
 #include <soc/google/cal-if.h>
 #include <soc/google/exynos-devfreq.h>
 #include <soc/google/ect_parser.h>
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 #include <dt-bindings/soc/google/zuma-devfreq.h>
+#else
+#include <dt-bindings/soc/google/gs101-devfreq.h>
+#endif
 #include <trace/events/power.h>
 #include "governor.h"
 #include "governor_memlat.h"
+#if IS_ENABLED(CONFIG_ARM_MEMLAT_MON)
 #include "arm-memlat-mon.h"
+#endif
 
 #define MEMLAT_DEVFREQ_MODULE_NAME	"zuma-memlat-devfreq"
 #define HZ_PER_KHZ	1000

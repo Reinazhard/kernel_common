@@ -826,11 +826,11 @@
 				cal_id = <ACPM_DVFS_MFC>;
 				dm_type_name = "dm_mfc";
 			};
-			devfreq_bo {
-				dm-index = <DM_BO>;
+			devfreq_bw {
+				dm-index = <DM_BW>;
 				available = "true";
-				cal_id = <ACPM_DVFS_BO>;
-				dm_type_name = "dm_BO";
+				cal_id = <ACPM_DVFS_BW>;
+				dm_type_name = "dm_BW";
 			};
 		};
 	};
@@ -1057,15 +1057,15 @@
 			dfs_id = <ACPM_DVFS_MFC>;
 		};
 
-		devfreq_7: devfreq_bo@17000080 {
+		devfreq_7: devfreq_bw@17000080 {
 			compatible = "samsung,exynos-devfreq";
 			reg = <0x0 0x17000080 0x0>;
-			devfreq_type = <DEVFREQ_BO>;
+			devfreq_type = <DEVFREQ_BW>;
 			devfreq_domain_name = "BO";
-			pm_qos_class = <PM_QOS_BO_THROUGHPUT>;
-			pm_qos_class_max = <PM_QOS_BO_THROUGHPUT_MAX>;
-			ess_flag = <ESS_FLAG_BO>;
-			dm-index = <DM_BO>;
+			pm_qos_class = <PM_QOS_BW_THROUGHPUT>;
+			pm_qos_class_max = <PM_QOS_BW_THROUGHPUT_MAX>;
+			ess_flag = <ESS_FLAG_BW>;
+			dm-index = <DM_BW>;
 
 			/* Delay time */
 			use_delay_time = "false";
@@ -1077,7 +1077,7 @@
 			governor = <SIMPLE_INTERACTIVE>;
 
 			bts_update = "false";
-			dfs_id = <ACPM_DVFS_BO>;
+			dfs_id = <ACPM_DVFS_BW>;
 		};
 
 	};

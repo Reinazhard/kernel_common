@@ -24,7 +24,7 @@
 #define DM_TNR		8
 #define DM_DISP		9
 #define DM_MFC		10
-#define DM_BO		11
+#define DM_BW		11
 
 /* CONSTRAINT TYPE */
 #define CONSTRAINT_MIN	0

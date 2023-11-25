@@ -494,6 +494,7 @@ static struct exynos_pm_qos_object bw_throughput_max_pm_qos = {
 	.name = "bw_throughput_max",
 };
 
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 static BLOCKING_NOTIFIER_HEAD(dsu_throughput_notifier);
 static struct exynos_pm_qos_constraints dsu_tput_constraints = {
         .list = PLIST_HEAD_INIT(dsu_tput_constraints.list),
@@ -583,6 +584,7 @@ static struct exynos_pm_qos_object tpu_freq_max_pm_qos = {
 	.constraints = &tpu_freq_max_constraints,
 	.name = "tpu_freq_max",
 };
+#endif
 
 static struct exynos_pm_qos_object *exynos_pm_qos_array[] = {
 	&null_exynos_pm_qos,
@@ -608,14 +610,18 @@ static struct exynos_pm_qos_object *exynos_pm_qos_array[] = {
 	&tnr_throughput_max_pm_qos,
 	&bw_throughput_pm_qos,
 	&bw_throughput_max_pm_qos,
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 	&dsu_throughput_pm_qos,
 	&dsu_throughput_max_pm_qos,
 	&bci_throughput_pm_qos,
 	&bci_throughput_max_pm_qos,
+#endif
 	&gpu_freq_min_pm_qos,
 	&gpu_freq_max_pm_qos,
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 	&tpu_freq_min_pm_qos,
 	&tpu_freq_max_pm_qos,
+#endif
 };
 
 static struct workqueue_struct *async_vote_wq;
