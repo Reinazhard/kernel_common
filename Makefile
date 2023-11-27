@@ -11,15 +11,17 @@ bigocean-$(CONFIG_DEBUG_FS) += bigo_debug.o
 KERNEL_SRC ?= /lib/modules/$(shell uname -r)/build
 M ?= $(shell pwd)
 
-KBUILD_OPTIONS += CONFIG_BIGOCEAN=m CONFIG_SLC_PARTITION_MANAGER=m \
-		  CONFIG_DEBUG_FS=m
+KBUILD_OPTIONS += CONFIG_BIGOCEAN=m CONFIG_SLC_PARTITION_MANAGER=m
 
-ccflags-y := -I$(KERNEL_SRC)/../google-modules/video/gchips
+include $(KERNEL_SRC)/../private/google-modules/soc/gs/Makefile.include
 
-EXTRA_CFLAGS	+= -I$(KERNEL_SRC)/../google-modules/video/gchips/include
+EXTRA_CFLAGS += -I$(KERNEL_SRC)/../private/google-modules/video/gchips/include
 
 modules modules_install headers_install clean:
 	$(MAKE) -C $(KERNEL_SRC) M=$(M) \
 	$(KBUILD_OPTIONS) \
 	EXTRA_CFLAGS="$(EXTRA_CFLAGS)" \
+	KBUILD_EXTRA_SYMBOLS="$(EXTRA_SYMBOLS)" \
 	$(@)
+
+modules_install: headers_install
