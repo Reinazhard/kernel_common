@@ -88,7 +88,7 @@ extern struct protected_mode_ops pixel_protected_ops;
 #endif /* IS_ENABLED(CONFIG_EXYNOS_ITMON) */
 
 /* SOC level includes */
-#if IS_ENABLED(CONFIG_GOOGLE_BCL)
+#if IS_ENABLED(CONFIG_GOOGLE_BCL_LEGACY)
 #include <soc/google/bcl.h>
 #endif
 #if IS_ENABLED(CONFIG_EXYNOS_PD)
@@ -330,7 +330,7 @@ struct pixel_context {
 		struct gpu_dvfs_opp_metrics power_off_metrics;
 		struct gpu_dvfs_opp_metrics power_on_metrics;
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
-#if IS_ENABLED(CONFIG_GOOGLE_BCL)
+#if IS_ENABLED(CONFIG_GOOGLE_BCL_LEGACY)
 		struct bcl_device *bcl_dev;
 #endif
 		struct pixel_rail_state_log *rail_state_log;

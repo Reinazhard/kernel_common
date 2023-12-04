@@ -272,7 +272,7 @@ static int gpu_pm_power_on_top_nolock(struct kbase_device *kbdev)
 	kbase_pm_metrics_start(kbdev);
 	gpu_dvfs_event_power_on(kbdev);
 #endif
-#if IS_ENABLED(CONFIG_GOOGLE_BCL)
+#if IS_ENABLED(CONFIG_GOOGLE_BCL_LEGACY)
 	if (!pc->pm.bcl_dev)
 		pc->pm.bcl_dev = google_retrieve_bcl_handle();
 	if (pc->pm.bcl_dev)
@@ -784,7 +784,7 @@ int gpu_pm_init(struct kbase_device *kbdev)
 		return -ENODEV;
 	}
 
-#if IS_ENABLED(CONFIG_GOOGLE_BCL)
+#if IS_ENABLED(CONFIG_GOOGLE_BCL_LEGACY)
 	pc->pm.bcl_dev = google_retrieve_bcl_handle();
 #endif
 
