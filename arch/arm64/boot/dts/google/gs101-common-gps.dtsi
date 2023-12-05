@@ -20,7 +20,7 @@
   swap-mode = <1>;
 
   bcm4775@0 {
-    compatible = "ssp,bcm4775";
+    compatible = "ssp-spi,bcm4775";
     reg = <0>;
     spi-max-frequency = <26000000>;
     spi-cpol;
