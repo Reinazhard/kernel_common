@@ -24,6 +24,7 @@
 
 	//max77759,cpout-en =  <&p9xxx_gpio 1 GPIO_ACTIVE_HIGH>;
 	//max77759,cpout-ctl =  <&p9xxx_gpio 3 GPIO_ACTIVE_HIGH>;
+	max77759,wcin-inlim-headroom = <40000>;
 
 	/* b/202526678 handles for WLC_RX->WLC_RX+GPIO */
 	max77759,wlc-en =  <&gpp0 0 GPIO_ACTIVE_HIGH>;
