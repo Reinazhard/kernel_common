@@ -222,6 +222,7 @@ struct exynos_usbdrd_phy {
 };
 
 void __iomem *phy_exynos_usbdp_get_address(void);
+extern bool exynos_pd_hsi0_get_ldo_status(void);
 
 #if IS_ENABLED(CONFIG_PHY_EXYNOS_EUSB_REPEATER)
 extern int eusb_repeater_power_on(void);

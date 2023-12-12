@@ -1163,7 +1163,7 @@ static int dwc3_exynos_probe(struct platform_device *pdev)
 
 	temp_usb_phy = devm_phy_get(dev, "usb2-phy");
 	if (IS_ERR(temp_usb_phy)) {
-		dev_dbg(dev, "USB phy is not probed - defered return!\n");
+		dev_dbg(dev, "USB phy is not probed - deferred return!\n");
 		return  -EPROBE_DEFER;
 	}
 
@@ -1175,6 +1175,11 @@ static int dwc3_exynos_probe(struct platform_device *pdev)
 			device_link_add(dev, &s2mpu_pdev->dev,
 					DL_FLAG_AUTOREMOVE_CONSUMER | DL_FLAG_PM_RUNTIME);
 		}
+	}
+
+	if (!exynos_pd_hsi0_get_ldo_status()) {
+		dev_err(dev, "pd-hsi0 is not powered, defered probe!");
+		return -EPROBE_DEFER;
 	}
 
 	exynos = devm_kzalloc(dev, sizeof(*exynos), GFP_KERNEL);
@@ -1231,8 +1236,6 @@ static int dwc3_exynos_probe(struct platform_device *pdev)
 		goto extcon_unregister;
 	}
 
-	exynos_usbdrd_vdd_hsi_manual_control(1);
-	exynos_usbdrd_ldo_manual_control(1);
 	exynos_usbdrd_s2mpu_manual_control(1);
 
 	if (node) {
