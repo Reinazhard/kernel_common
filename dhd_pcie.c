@@ -194,6 +194,7 @@ bool h2d_phase = 0;
  */
 bool force_trap_bad_h2d_phase = 0;
 
+uint32 ltr_latency_scale_ns[6] = {1, 32, 1024, 32768, 1048576, 33554432}; //ns
 int dhd_dongle_ramsize;
 struct dhd_bus *g_dhd_bus = NULL;
 #ifdef DNGL_AXI_ERROR_LOGGING
@@ -915,6 +916,146 @@ dhdpcie_chip_support_msi(dhd_bus_t *bus)
 	}
 }
 
+/* Get LTR sleep latency which dongle has set through wl bus IOVAR */
+static int32
+dhdpcie_ltr_sleep_lat_get(dhd_pub_t *dhdp, uint32 *ltr_sleep_lat_ns)
+{
+	uint32 ltr_sleep_lat, ltr_latency_scale, ltr_latency_value;
+	int32 ret = 0;
+	ret = dhd_iovar(dhdp, 0, "bus:ltr_sleep_lat", NULL, 0, (char *)&ltr_sleep_lat,
+		sizeof(ltr_sleep_lat), FALSE);
+	if (ret < 0) {
+		DHD_ERROR(("%s: , bus:ltr_sleep_lat not supported, proceed\n", __FUNCTION__));
+	} else {
+		ltr_latency_scale =
+			(ltr_sleep_lat & PCIE_LTR_LAT_SCALE_MASK) >> PCIE_LTR_LAT_SCALE_SHIFT;
+		ltr_latency_value = ltr_sleep_lat & PCIE_LTR_LAT_VALUE_MASK;
+		*ltr_sleep_lat_ns =  ltr_latency_scale_ns[ltr_latency_scale] * ltr_latency_value;
+		DHD_PRINT(("ltr_sleep_lat = %dus, ltr_sleep_lat : 0x%x ltr_latency_scale: %d"
+			" ltr_latency_value: %d\n", (*ltr_sleep_lat_ns / 1000),
+			ltr_sleep_lat, ltr_latency_scale, ltr_latency_value));
+	}
+	return ret;
+}
+
+/* Get LTR active latency which dongle has set through wl bus IOVAR */
+static uint32
+dhdpcie_ltr_active_lat_get(dhd_pub_t *dhdp, uint32 *ltr_active_lat_ns)
+{
+	uint32 ltr_active_lat, ltr_latency_scale, ltr_latency_value;
+	int32 ret = 0;
+
+	ret = dhd_iovar(dhdp, 0, "bus:ltr_active_lat", NULL, 0, (char *)&ltr_active_lat,
+		sizeof(ltr_active_lat), FALSE);
+	if (ret < 0) {
+		DHD_ERROR(("%s: , bus:ltr_active_lat not supported, proceed\n", __FUNCTION__));
+	} else {
+		ltr_latency_scale =
+			(ltr_active_lat & PCIE_LTR_LAT_SCALE_MASK) >> PCIE_LTR_LAT_SCALE_SHIFT;
+		ltr_latency_value = (ltr_active_lat & PCIE_LTR_LAT_VALUE_MASK);
+		*ltr_active_lat_ns =  ltr_latency_scale_ns[ltr_latency_scale] * ltr_latency_value;
+		DHD_PRINT(("ltr_active_lat = %dus, ltr_active_lat: 0x%x ltr_latency_scale: %d"
+			" ltr_latency_value: 0x%x\n",
+			(*ltr_active_lat_ns / 1000), ltr_active_lat,
+			ltr_latency_scale, ltr_latency_value));
+	}
+	return ret;
+}
+
+/* Set LTR active latency through wl bus IOVAR */
+static int32
+dhdpcie_ltr_active_lat_set(dhd_pub_t *dhdp, uint32 ltr_active_lat_set_us)
+{
+	int ret = 0;
+	ret = dhd_iovar(dhdp, 0, "bus:ltr_active_lat",
+		(char *)&ltr_active_lat_set_us, 4, NULL, 0, TRUE);
+	if (ret < 0) {
+		DHD_ERROR(("%s: , bus:ltr_active_lat set failed, proceed\n", __FUNCTION__));
+	}
+	return ret;
+}
+
+/* Get LTR threshold set by RC */
+static int32
+dhdpcie_cfg_ltr_threshold_get(dhd_pub_t *dhdp, uint32 *ltr_threshold_lat_ns)
+{
+	uint32 ltr_threshold, ltr_latency_scale, ltr_latency_value;
+
+	ltr_threshold = dhdpcie_ep_access_cap(dhdp->bus, PCIE_EXTCAP_ID_L1SS,
+			PCIE_EXTCAP_L1SS_CONTROL_OFFSET, TRUE, FALSE, 0);
+	if (ltr_threshold == -1) {
+		return BCME_ERROR;
+	}
+
+	ltr_latency_scale =
+		(ltr_threshold & PCIE_LTR_THRESHOLD_SCALE_MASK) >> PCIE_LTR_THRESHOLD_SCALE_SHIFT;
+	ltr_latency_value =
+		(ltr_threshold & PCIE_LTR_THRESHOLD_VALUE_MASK) >> PCIE_LTR_THRESHOLD_VALUE_SHIFT;
+	*ltr_threshold_lat_ns =  ltr_latency_scale_ns[ltr_latency_scale] * ltr_latency_value;
+	DHD_PRINT(("ltr_threshold_lat = %dus, ltr_threshold: 0x%x ltr_latency_scale: %d"
+		" ltr_latency_value 0x%x\n",
+		(*ltr_threshold_lat_ns / 1000), ltr_threshold,
+		ltr_latency_scale, ltr_latency_value));
+	return 0;
+}
+
+/*
+ * In case LTR active is greater than LTR threshold, for dongle to enter L1.1,
+ * set LTR active to 90% of LTR threshold.
+ */
+static void
+dhdpcie_ltr_active_sanity_check(dhd_pub_t *dhdp)
+{
+	uint32 ltr_active_lat_ns;
+	uint32 ltr_threshold_lat_ns;
+	uint32 ltr_sleep_lat_ns;
+	uint32 ltr_active_lat_set;
+	int32 ret = 0;
+
+	ret = dhdpcie_ltr_active_lat_get(dhdp, &ltr_active_lat_ns);
+	if (ret < 0) {
+		return;
+	}
+	ret = dhdpcie_cfg_ltr_threshold_get(dhdp, &ltr_threshold_lat_ns);
+	if (ret < 0) {
+		return;
+	}
+
+	/*
+	 * ltr_threshold_lat_ns: LTR threshold set by RC
+	 * ltr_active_lat_ns: LTR active set by FW
+	 * To enter L1.1 ltr_active_lat_ns should be less than ltr_threshold_lat_ns.
+	 * When the above condition is not met change the bus:ltr_active_lat set by Dongle.
+	 */
+	if (ltr_active_lat_ns >= ltr_threshold_lat_ns) {
+		/* 90% of ltr_threshold_lat_ns */
+		ltr_active_lat_set = ((ltr_threshold_lat_ns * 90) / 100);
+		/* the wl iovar expects us as input */
+		ret = dhdpcie_ltr_active_lat_set(dhdp, ltr_active_lat_set / 1000);
+		if (ret < 0) {
+			return;
+		}
+		DHD_PRINT(("To enter L1.1, LTR  active latency should be less than LTR threshold"
+			" set by RC. But the same was not true. Hence changed the"
+			" LTR active latency to %dus\n", ltr_active_lat_set / 1000));
+		/* read and check the ltr set */
+		ret = dhdpcie_ltr_active_lat_get(dhdp, &ltr_active_lat_ns);
+		if (ret < 0) {
+			return;
+		}
+	}
+	/* for debug information */
+	dhdpcie_ltr_sleep_lat_get(dhdp, &ltr_sleep_lat_ns);
+}
+
+
+/* This is the function to plug-in any post prot init quirks */
+void
+dhdpcie_quirks_after_prot_init(dhd_pub_t *dhdp)
+{
+	dhdpcie_ltr_active_sanity_check(dhdp);
+}
+
 /**
  * Called once for each hardware (dongle) instance that this DHD manages.
  *
@@ -1164,7 +1305,7 @@ dhd_bus_query_dpc_sched_errors(dhd_pub_t *dhdp)
 	dhd_bus_t *bus = dhdp->bus;
 	bool sched_err;
 
-	if (bus->dpc_entry_time < bus->isr_exit_time) {
+	if ((bus->dpc_entry_time < bus->isr_exit_time) && bus->dpc_sched) {
 		/* Kernel doesn't schedule the DPC after processing PCIe IRQ */
 		sched_err = TRUE;
 	} else if (bus->dpc_entry_time < bus->resched_dpc_time) {
@@ -1184,14 +1325,16 @@ dhd_bus_query_dpc_sched_errors(dhd_pub_t *dhdp)
 			" dpc_entry_time="SEC_USEC_FMT
 			"\ndpc_exit_time="SEC_USEC_FMT
 			" isr_sched_dpc_time="SEC_USEC_FMT
-			" resched_dpc_time="SEC_USEC_FMT"\n",
+			" resched_dpc_time="SEC_USEC_FMT
+			" dpc_sched=%u\n",
 			GET_SEC_USEC(bus->isr_entry_time),
 			GET_SEC_USEC(bus->prev_isr_entry_time),
 			GET_SEC_USEC(bus->isr_exit_time),
 			GET_SEC_USEC(bus->dpc_entry_time),
 			GET_SEC_USEC(bus->dpc_exit_time),
 			GET_SEC_USEC(bus->isr_sched_dpc_time),
-			GET_SEC_USEC(bus->resched_dpc_time)));
+			GET_SEC_USEC(bus->resched_dpc_time),
+			bus->dpc_sched));
 	}
 
 	return sched_err;
@@ -6018,6 +6161,7 @@ toss:
 #else
 	PKTCFREE(bus->dhd->osh, txp, TRUE);
 #endif /* DHD_EFI */
+
 	return ret;
 } /* dhd_bus_txdata */
 
@@ -6744,6 +6888,7 @@ void
 dhd_bus_clearcounts(dhd_pub_t *dhdp)
 {
 	dhd_prot_clearcounts(dhdp);
+
 	dhdp->rx_pktgetpool_fail = 0;
 
 	dhd_clear_dpc_histos(dhdp);
@@ -11359,7 +11504,7 @@ void dhd_dump_intr_counters(dhd_pub_t *dhd, struct bcmstrbuf *strbuf)
 		" last_process_txcpl_time="SEC_USEC_FMT"\nlast_process_rxcpl_time="SEC_USEC_FMT
 		" last_process_infocpl_time="SEC_USEC_FMT" last_process_edl_time="SEC_USEC_FMT
 		"\ndpc_exit_time="SEC_USEC_FMT" resched_dpc_time="SEC_USEC_FMT"\n"
-		"last_d3_inform_time="SEC_USEC_FMT"\n",
+		"last_d3_inform_time="SEC_USEC_FMT" dpc_sched=%u\n",
 		GET_SEC_USEC(current_time), GET_SEC_USEC(bus->isr_entry_time),
 		GET_SEC_USEC(bus->prev_isr_entry_time),
 		GET_SEC_USEC(bus->isr_exit_time), GET_SEC_USEC(bus->isr_sched_dpc_time),
@@ -11372,7 +11517,7 @@ void dhd_dump_intr_counters(dhd_pub_t *dhd, struct bcmstrbuf *strbuf)
 		GET_SEC_USEC(bus->last_process_infocpl_time),
 		GET_SEC_USEC(bus->last_process_edl_time),
 		GET_SEC_USEC(bus->dpc_exit_time), GET_SEC_USEC(bus->resched_dpc_time),
-		GET_SEC_USEC(bus->last_d3_inform_time));
+		GET_SEC_USEC(bus->last_d3_inform_time), bus->dpc_sched);
 
 	bcm_bprintf(strbuf, "\nlast_suspend_start_time="SEC_USEC_FMT" last_suspend_end_time="
 		SEC_USEC_FMT" last_resume_start_time="SEC_USEC_FMT" last_resume_end_time="
@@ -17291,10 +17436,10 @@ dhd_pcie_intr_count_dump(dhd_pub_t *dhd)
 		GET_SEC_USEC(current_time)));
 	DHD_ERROR(("isr_entry_time="SEC_USEC_FMT
 		" prev_isr_entry_time="SEC_USEC_FMT
-		" isr_exit_time="SEC_USEC_FMT"\n",
+		" isr_exit_time="SEC_USEC_FMT" dpc_sched=%u\n",
 		GET_SEC_USEC(bus->isr_entry_time),
 		GET_SEC_USEC(bus->prev_isr_entry_time),
-		GET_SEC_USEC(bus->isr_exit_time)));
+		GET_SEC_USEC(bus->isr_exit_time), bus->dpc_sched));
 	DHD_ERROR(("isr_sched_dpc_time="SEC_USEC_FMT
 		" rpm_sched_dpc_time="SEC_USEC_FMT
 		" last_non_ours_irq_time="SEC_USEC_FMT"\n",

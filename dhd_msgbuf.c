@@ -5343,6 +5343,8 @@ int dhd_sync_with_dongle(dhd_pub_t *dhd)
 	DHD_ERROR(("\nwlc_ver_major %d, wlc_ver_minor %d",
 		dhd->wlc_ver_major, dhd->wlc_ver_minor));
 
+	dhdpcie_quirks_after_prot_init(dhd);
+
 #ifdef DHD_FW_COREDUMP
 	/* Check the memdump capability */
 	dhd_get_memdump_info(dhd);
