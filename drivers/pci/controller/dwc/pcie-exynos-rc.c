@@ -62,6 +62,7 @@
 #include <soc/google/s2mpu.h>
 #include "../../../iommu/exynos-pcie-iommu-exp.h"
 #include <trace/hooks/pci.h>
+#include <soc/google/debug-snapshot.h>
 
 #include <soc/google/exynos-el3_mon.h>
 
@@ -5019,10 +5020,11 @@ int exynos_pcie_rc_itmon_notifier(struct notifier_block *nb, unsigned long actio
 		     */
 		if ((itmon_info->port && !strcmp(itmon_info->port, "HSI2")) ||
 		    (itmon_info->dest && !strcmp(itmon_info->dest, "HSI2"))) {
-			regmap_read(exynos_pcie->pmureg, exynos_pcie->pmu_offset, &val);
-			dev_info(dev, "### PMU PHY Isolation : 0x%x\n", val);
+			if (exynos_pcie->ch_num == 0)
+				return NOTIFY_DONE;
 
-			exynos_pcie_rc_register_dump(exynos_pcie->ch_num);
+			// force reset and get dump
+			dbg_snapshot_emergency_reboot("# HSI2 FORCE RESET AND GET S2D DUMP!! #\n");
 		}
 	} else {
 		dev_info(dev, "skip register dump(ip_ver = 0x%x)\n", exynos_pcie->ip_ver);
