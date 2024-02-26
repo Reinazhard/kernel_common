@@ -61,6 +61,7 @@ exynos_mfc.ko
 exynos_pm_qos.ko
 exynos_tty.ko
 g2d.ko
+gcma.ko
 goodixfp.ko
 google-battery.ko
 google-bms.ko
