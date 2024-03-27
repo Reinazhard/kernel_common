@@ -1051,10 +1051,12 @@ static int __apply_dev_quirks(struct ufs_hba *hba)
 	struct ufs_vs_handle *handle = &ufs->handle;
 	const u32 pa_h8_time_offset = 0x329C;
 	u32 peer_hibern8time;
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 	struct ufs_cal_param *p = &ufs->cal_param;
 	/* 50us is a heuristic value, so it could change later */
 	u32 ref_gate_margin = (hba->dev_info.wspecversion >= 0x300) ?
 		hba->dev_info.clk_gating_wait_us : 50;
+#endif
 
 	/*
 	 * As for tActivate, device value is bigger than host value,
@@ -1069,11 +1071,13 @@ static int __apply_dev_quirks(struct ufs_hba *hba)
 		unipro_writel(handle, peer_hibern8time, pa_h8_time_offset);
 	}
 
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 	/* TODO: confirm PA_Granularity (0x15AA) is set to 6 (100us) in case
 	 * Reset Value changes
 	 */
 	p->ah8_thinern8_time = peer_hibern8time * H8T_GRANULARITY;
 	p->ah8_brefclkgatingwaittime = ref_gate_margin;
+#endif
 
 	return 0;
 }
@@ -1294,6 +1298,7 @@ static int exynos_ufs_populate_dt(struct device *dev,
 	else
 		ufs->ah8_ahit = 0;
 
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 	if (ufs->ah8_ahit) {
 		ufs->cal_param.support_ah8_cal = true;
 		ufs->cal_param.ah8_thinern8_time = 3;
@@ -1301,6 +1306,7 @@ static int exynos_ufs_populate_dt(struct device *dev,
 	} else {
 		ufs->cal_param.support_ah8_cal = false;
 	}
+#endif
 out:
 	dev_info(dev, "evt version : %d, board: %d\n",
 			ufs->cal_param.evt_ver, ufs->cal_param.board);
