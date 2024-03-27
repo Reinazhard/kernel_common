@@ -294,7 +294,10 @@ int bts_get_bwindex(const char *name)
 {
 	struct bts_bw *bw = btsdev->bts_bw;
 	unsigned int index;
-	int ret, i, j;
+	int ret, i;
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
+	int j;
+#endif
 
 	spin_lock(&btsdev->lock);
 
