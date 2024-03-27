@@ -212,9 +212,12 @@ exports_files([
     "build.config.slider.kasan",
     "build.config.slider.khwasan",
     "build.config.zuma",
+    "build.config.gs101",
     "system_dlkm.props.zuma",
     "vendor_dlkm.blocklist.zuma",
+    "vendor_dlkm.blocklist.slider",
     "vendor_dlkm.props.zuma",
     "vendor_dlkm_modules.zuma",
+    "vendor_boot_modules.slider",
     "vendor_kernel_boot_modules.zuma",
 ])
