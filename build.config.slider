@@ -6,8 +6,8 @@ SOC_DIR=private/google-modules/soc/gs
 KERNEL_DIR=${GKI_KERNEL_DIR:-"aosp"}
 
 # These just need to be relative to the ROOT_DIR
-GKI_FRAGMENT_DEFCONFIG=${DEVICE_DIR}/shusky_gki.fragment
-. ${ROOT_DIR}/${SOC_DIR}/build.config.zuma
+GKI_FRAGMENT_DEFCONFIG=${DEVICE_DIR}/gs101_gki.fragment
+. ${ROOT_DIR}/${SOC_DIR}/build.config.gs101
 
 DTC_INCLUDE=${ROOT_DIR}/${SOC_DIR}/include/dtc
 MKDTIMG_FLAGS="--page_size=4096 --id=/:board_id --rev=/:board_rev"

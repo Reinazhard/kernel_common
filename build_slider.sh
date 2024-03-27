@@ -33,4 +33,4 @@ else
   echo -e "   3) IF \"build --config=download_gki\"                   ----> core-kernel based on GKI prebuilts\n"
 fi
 
-exec tools/bazel run ${parameters} --config=stamp --config=shusky --config=fast //private/devices/google/shusky:zuma_shusky_dist "$@"
+exec tools/bazel run ${parameters} --config=stamp --config=slider --config=fast //private/devices/google/slider:gs101_slider_dist "$@"
