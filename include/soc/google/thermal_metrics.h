@@ -29,8 +29,6 @@ static const char * const abnormality_type_str[] = {
 struct temp_validity_config {
 	int min_temp;
 	int max_temp;
-	u8 min_repeat_count;
-	int min_repeat_msecs;
 };
 
 struct tr_sample {
