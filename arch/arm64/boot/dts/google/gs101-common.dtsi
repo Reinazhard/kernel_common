@@ -362,6 +362,7 @@
 &pcie_1 {	/* pcie ch1 used for the connection with WiFi on Slider */
 	status = "okay";
 	num-lanes = <1>;
+	use-msi = "true";
 	use-sicd = "true";
 	use-ia = "true";
 	use-l1ss = "true";
