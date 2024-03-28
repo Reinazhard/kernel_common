@@ -166,7 +166,6 @@ sscoredump.ko
 st21nfc.ko
 st33spi.ko
 st54spi.ko
-stmvl53l1.ko
 systrace.ko
 tcpci_fusb307.ko
 tcpci_max77759.ko
