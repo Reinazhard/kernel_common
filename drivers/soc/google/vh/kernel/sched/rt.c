@@ -17,10 +17,12 @@ extern bool task_may_not_preempt(struct task_struct *task, int cpu);
 extern int cpu_is_idle(int cpu);
 extern int sched_cpu_idle(int cpu);
 extern bool get_prefer_high_cap(struct task_struct *p);
+extern void set_prefer_high_cap(struct task_struct *p, bool val);
 
-extern int ___update_load_sum(u64 now, struct sched_avg *sa,
-			  unsigned long load, unsigned long runnable, int running);
+extern int ___update_load_sum(u64 now, struct sched_avg *sa, unsigned long load,
+			      unsigned long runnable, int running);
 extern void ___update_load_avg(struct sched_avg *sa, unsigned long load);
+extern int get_cluster_enabled(int cluster);
 
 /*****************************************************************************/
 /*                       Upstream Code Section                               */
@@ -65,7 +67,7 @@ static inline void rt_task_fits_capacity(struct task_struct *p, int cpu,
 	unsigned long uclamp_max = uclamp_eff_value_pixel_mod(p, UCLAMP_MAX);
 	unsigned long util = task_util(p);
 
-	if (get_prefer_high_cap(p) && cpu < MID_CAPACITY_CPU) {
+	if (get_prefer_high_cap(p) && cpu < pixel_cluster_start_cpu[1]) {
 		*fits = false;
 		*fits_original = false;
 		return;
@@ -73,7 +75,7 @@ static inline void rt_task_fits_capacity(struct task_struct *p, int cpu,
 
 	*fits = util_fits_cpu(util, uclamp_min, uclamp_max, cpu);
 	*fits_original = capacity_orig_of(cpu) >= clamp(util, uclamp_min, uclamp_max) ||
-			 cpu >= MAX_CAPACITY_CPU;
+			 cpu >= pixel_cluster_start_cpu[2];
 }
 
 void check_migrate_rt_task(struct rq *rq, struct task_struct *p)
@@ -120,14 +122,14 @@ unlock:
 static int find_least_loaded_cpu(struct task_struct *p, struct cpumask *lowest_mask,
 				 struct cpumask *backup_mask)
 {
-	unsigned long util[CPU_NUM] = { 0 };
-	unsigned long capacity[CPU_NUM] = { 0 };
-	unsigned int cpu_importance[CPU_NUM] = { 0 };
-	unsigned int exit_lat[CPU_NUM] = { 0 };
-	bool task_fits[CPU_NUM] = { 0 };
-	bool task_fits_original[CPU_NUM] = { 0 };
-	bool overutilize[CPU_NUM] = { 0 };
-	bool candidates[CPU_NUM] = { 0 };
+	unsigned long util[CONFIG_VH_SCHED_MAX_CPU_NR] = { 0 };
+	unsigned long capacity[CONFIG_VH_SCHED_MAX_CPU_NR] = { 0 };
+	unsigned int cpu_importance[CONFIG_VH_SCHED_MAX_CPU_NR] = { 0 };
+	unsigned int exit_lat[CONFIG_VH_SCHED_MAX_CPU_NR] = { 0 };
+	bool task_fits[CONFIG_VH_SCHED_MAX_CPU_NR] = { 0 };
+	bool task_fits_original[CONFIG_VH_SCHED_MAX_CPU_NR] = { 0 };
+	bool overutilize[CONFIG_VH_SCHED_MAX_CPU_NR] = { 0 };
+	bool candidates[CONFIG_VH_SCHED_MAX_CPU_NR] = { 0 };
 	int cpu, best_cpu = -1;
 	unsigned long min_cpu_util;
 	unsigned long min_cpu_capacity;
@@ -179,6 +181,12 @@ static int find_least_loaded_cpu(struct task_struct *p, struct cpumask *lowest_m
 		rt_task_fits_capacity(p, cpu, &task_fits[cpu], &task_fits_original[cpu]);
 		overutilize[cpu] = !util_fits_cpu(util[cpu],
 						  rq_util_min, rq_util_max, cpu);
+
+		// Make cpus in CPD state the least preferred
+		if (is_idle && !get_cluster_enabled(pixel_cpu_to_cluster[cpu])) {
+			cpu_importance[cpu] = UINT_MAX;
+			exit_lat[cpu] = pixel_cpd_exit_latency[pixel_cpu_to_cluster[cpu]];
+		}
 
 		trace_sched_cpu_util_rt(cpu, capacity[cpu], capacity_of(cpu), util[cpu],
 					exit_lat[cpu], cpu_importance[cpu], task_fits[cpu],
@@ -392,17 +400,21 @@ void rvh_select_task_rq_rt_pixel_mod(void *data, struct task_struct *p, int prev
 	this_cpu = smp_processor_id();
 	this_cpu_rq = cpu_rq(this_cpu);
 
-	rt_task_fits_capacity(p, this_cpu, &fits, &fits_original);
 	/*
 	 * Respect the sync flag as long as the task can run on this CPU.
 	 */
-	if (should_honor_rt_sync(this_cpu_rq, p, sync) &&
-	    cpumask_test_cpu(this_cpu, p->cpus_ptr) && fits_original &&
-	    atomic_read(&get_vendor_rq_struct(this_cpu_rq)->num_adpf_tasks) == 0) {
-		*new_cpu = this_cpu;
-		sync_wakeup = true;
-		goto out_unlock;
+	if (should_honor_rt_sync(this_cpu_rq, p, sync)) {
+		rt_task_fits_capacity(p, this_cpu, &fits, &fits_original);
+
+		if (cpumask_test_cpu(this_cpu, p->cpus_ptr) && fits_original &&
+			atomic_read(&get_vendor_rq_struct(this_cpu_rq)->num_adpf_tasks) == 0) {
+			*new_cpu = this_cpu;
+			sync_wakeup = true;
+			goto out_unlock;
+		}
 	}
+
+	set_prefer_high_cap(p, sync && this_cpu >= pixel_cluster_start_cpu[1]);
 
 	target = find_lowest_rq(p, &backup_mask);
 
@@ -433,6 +445,8 @@ out_unlock:
 	rcu_read_unlock();
 out:
 	trace_sched_select_task_rq_rt(p, task_util(p), prev_cpu, target, *new_cpu, sync_wakeup);
+
+	set_prefer_high_cap(p, false);
 
 	return;
 }

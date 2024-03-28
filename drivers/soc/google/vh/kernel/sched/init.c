@@ -97,18 +97,36 @@ extern void rvh_remove_entity_load_avg_pixel_mod(void *data, struct cfs_rq *cfs_
 extern void rvh_update_blocked_fair_pixel_mod(void *data, struct rq *rq);
 #endif
 extern void android_vh_use_amu_fie_pixel_mod(void* data, bool *use_amu_fie);
-extern void rvh_set_user_nice_pixel_mod(void *data, struct task_struct *p, long *nice,
-					bool *allowed);
+extern void rvh_set_user_nice_locked_pixel_mod(void *data, struct task_struct *p, long *nice);
 extern void rvh_setscheduler_pixel_mod(void *data, struct task_struct *p);
 extern void rvh_find_lowest_rq_pixel_mod(void *data, struct task_struct *p,
 					 struct cpumask *lowest_mask,
 					 int ret, int *cpu);
-
-extern struct cpufreq_governor sched_pixel_gov;
+extern void rvh_update_misfit_status_pixel_mod(void *data, struct task_struct *p, struct rq *rq,
+					       bool *need_update);
 
 extern int pmu_poll_init(void);
+extern void set_cluster_enabled_cb(int cluster, int enabled);
+extern void register_set_cluster_enabled_cb(void (*func)(int, int));
 
+extern struct cpufreq_governor sched_pixel_gov;
 extern bool wait_for_init;
+
+int pixel_cpu_num;
+int pixel_cluster_num = 0;
+int *pixel_cluster_start_cpu;
+int *pixel_cluster_cpu_num;
+int *pixel_cpu_to_cluster;
+int *pixel_cluster_enabled;
+unsigned int *pixel_cpd_exit_latency;
+bool pixel_cpu_init = false;
+
+EXPORT_SYMBOL_GPL(pixel_cpu_num);
+EXPORT_SYMBOL_GPL(pixel_cluster_num);
+EXPORT_SYMBOL_GPL(pixel_cluster_start_cpu);
+EXPORT_SYMBOL_GPL(pixel_cpu_init);
+
+DEFINE_STATIC_KEY_FALSE(enqueue_dequeue_ready);
 
 /*
  * @tsk: Remote task we want to access its info
@@ -162,7 +180,7 @@ static void init_vendor_rt_rq(void)
 	int i;
 	struct vendor_rq_struct *vrq;
 
-	for (i = 0; i < CPU_NUM; i++) {
+	for (i = 0; i < pixel_cpu_num; i++) {
 		vrq = get_vendor_rq_struct(cpu_rq(i));
 		raw_spin_lock_init(&vrq->lock);
 		vrq->util_removed = 0;
@@ -191,9 +209,86 @@ static int init_vendor_task_data(void *data)
 	return 0;
 }
 
+static int init_pixel_cpu(void)
+{
+	int i, j = 0;
+	unsigned long cur_capacity = 0;
+
+	pixel_cpu_num = cpumask_weight(cpu_possible_mask);
+
+	if (!pixel_cpu_num)
+		return -EPROBE_DEFER;
+
+	for_each_possible_cpu(i) {
+		if (arch_scale_cpu_capacity(i) > cur_capacity) {
+			cur_capacity = arch_scale_cpu_capacity(i);
+			pixel_cluster_num++;
+		}
+	}
+
+	pixel_cpu_to_cluster  = kcalloc(pixel_cpu_num, sizeof(int), GFP_KERNEL);
+	if (!pixel_cpu_to_cluster)
+		return -ENOMEM;
+
+	pixel_cluster_start_cpu = kcalloc(pixel_cluster_num, sizeof(int), GFP_KERNEL);
+	if (!pixel_cluster_start_cpu)
+		goto out_no_pixel_cluster_start_cpu;
+
+	pixel_cluster_cpu_num = kcalloc(pixel_cluster_num, sizeof(int), GFP_KERNEL);
+	if (!pixel_cluster_cpu_num)
+		goto out_no_pixel_cluster_cpu_num;
+
+	pixel_cluster_enabled = kmalloc_array(pixel_cluster_num, sizeof(int), GFP_KERNEL);
+	if (!pixel_cluster_cpu_num)
+		goto out_no_pixel_cluster_enabled;
+
+	pixel_cpd_exit_latency = kcalloc(pixel_cluster_num, sizeof(int), GFP_KERNEL);
+	if (!pixel_cpd_exit_latency)
+		goto out_no_pixel_cpd_exit_latency;
+
+	cur_capacity = 0;
+	for_each_possible_cpu(i) {
+		if (arch_scale_cpu_capacity(i) > cur_capacity) {
+			pixel_cluster_start_cpu[j++] = i;
+			cur_capacity = arch_scale_cpu_capacity(i);
+		}
+
+		pixel_cluster_cpu_num[j - 1]++;
+		pixel_cpu_to_cluster[i] = j - 1;
+	}
+
+	for (i = 0; i < pixel_cluster_num; i++) {
+		pixel_cluster_enabled[i] = 1;
+		pixel_cpd_exit_latency[i] = UINT_MAX - pixel_cluster_num + i;
+	}
+
+	pixel_cpu_init = true;
+
+	register_set_cluster_enabled_cb(set_cluster_enabled_cb);
+
+	return 0;
+
+out_no_pixel_cpd_exit_latency:
+	kfree(pixel_cluster_enabled);
+out_no_pixel_cluster_enabled:
+	kfree(pixel_cluster_cpu_num);
+out_no_pixel_cluster_cpu_num:
+	kfree(pixel_cluster_start_cpu);
+out_no_pixel_cluster_start_cpu:
+	kfree(pixel_cpu_to_cluster);
+
+	return -ENOMEM;
+}
+
 static int vh_sched_init(void)
 {
 	int ret;
+
+	ret = init_pixel_cpu();
+	if (ret) {
+		pr_err("pixel cpu init failed\n");
+		return ret;
+	}
 
 	ret = pmu_poll_init();
 	if (ret) {
@@ -258,6 +353,8 @@ static int vh_sched_init(void)
 	ret = register_trace_android_rvh_dequeue_task_fair(rvh_dequeue_task_fair_pixel_mod, NULL);
 	if (ret)
 		return ret;
+
+	static_branch_enable(&enqueue_dequeue_ready);
 
 #if IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 	ret = register_trace_android_rvh_attach_entity_load_avg(
@@ -335,6 +432,11 @@ static int vh_sched_init(void)
 	if (ret)
 		return ret;
 
+	ret = register_trace_android_rvh_update_misfit_status(
+		rvh_update_misfit_status_pixel_mod, NULL);
+	if (ret)
+		return ret;
+
 	ret = register_trace_android_rvh_post_init_entity_util_avg(
 		rvh_post_init_entity_util_avg_pixel_mod, NULL);
 	if (ret)
@@ -401,7 +503,9 @@ static int vh_sched_init(void)
 	if (ret)
 		return ret;
 
-	ret = register_trace_android_rvh_set_user_nice(rvh_set_user_nice_pixel_mod, NULL);
+
+	ret = register_trace_android_rvh_set_user_nice_locked(rvh_set_user_nice_locked_pixel_mod,
+		NULL);
 	if (ret)
 		return ret;
 
@@ -418,10 +522,6 @@ static int vh_sched_init(void)
 		return ret;
 
 	ret = register_trace_android_vh_prio_restore(vh_prio_restore, NULL);
-	if (ret)
-		return ret;
-
-	ret = acpu_init();
 	if (ret)
 		return ret;
 

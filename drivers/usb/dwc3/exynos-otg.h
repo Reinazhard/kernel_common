@@ -14,6 +14,7 @@
 #include <linux/power_supply.h>
 #include <linux/usb/dwc3-exynos.h>
 #include <linux/usb/otg-fsm.h>
+#include <linux/kernfs.h>
 
 #include <soc/google/exynos_pm_qos.h>
 
@@ -48,6 +49,12 @@ struct dwc3_otg {
 	struct wakeup_source	*reconn_wakelock;
 
 	unsigned		ready:1;
+	bool			host_ready;
+
+	/* New data role that is updated before the data role change is executed */
+	enum usb_role		desired_role;
+	struct kernfs_node	*desired_role_kn;
+
 	int			otg_connection;
 
 	struct regulator	*vbus_reg;

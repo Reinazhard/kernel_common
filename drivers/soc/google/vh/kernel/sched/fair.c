@@ -28,7 +28,7 @@ extern int ___update_load_sum(u64 now, struct sched_avg *sa,
 extern void ___update_load_avg(struct sched_avg *sa, unsigned long load);
 
 static struct vendor_util_group_property ug[UG_MAX];
-static struct vendor_cfs_util vendor_cfs_util[UG_MAX][CPU_NUM];
+static struct vendor_cfs_util vendor_cfs_util[UG_MAX][CONFIG_VH_SCHED_MAX_CPU_NR];
 #endif
 
 extern int vendor_sched_ug_bg_auto_prio;
@@ -39,14 +39,13 @@ extern bool vendor_sched_boost_adpf_prio;
 static unsigned int early_boot_boost_uclamp_min = 563;
 module_param(early_boot_boost_uclamp_min, uint, 0644);
 
-unsigned int sched_capacity_margin[CPU_NUM] = { [0 ... CPU_NUM - 1] = DEF_UTIL_THRESHOLD };
-unsigned int sched_dvfs_headroom[CPU_NUM] = { [0 ... CPU_NUM - 1] = DEF_UTIL_THRESHOLD };
+unsigned int sched_capacity_margin[CONFIG_VH_SCHED_MAX_CPU_NR] =
+	{ [0 ... CONFIG_VH_SCHED_MAX_CPU_NR - 1] = DEF_UTIL_THRESHOLD };
+unsigned int sched_dvfs_headroom[CONFIG_VH_SCHED_MAX_CPU_NR] =
+	{ [0 ... CONFIG_VH_SCHED_MAX_CPU_NR - 1] = DEF_UTIL_THRESHOLD };
 
-unsigned int sched_auto_uclamp_max[CPU_NUM] = {
-	[MIN_CAPACITY_CPU ... MID_CAPACITY_CPU - 1] = 100,
-	[MID_CAPACITY_CPU ... MAX_CAPACITY_CPU - 1] = 500,
-	[MAX_CAPACITY_CPU ... CPU_NUM - 1] = 700
-};
+unsigned int sched_auto_uclamp_max[CONFIG_VH_SCHED_MAX_CPU_NR] =
+	{ [0 ... CONFIG_VH_SCHED_MAX_CPU_NR - 1] = 1024 };
 
 struct vendor_group_property vg[VG_MAX];
 
@@ -486,7 +485,13 @@ static inline enum utilization_group get_utilization_group(struct task_struct *p
 
 bool get_prefer_high_cap(struct task_struct *p)
 {
-	return vg[get_vendor_group(p)].prefer_high_cap;
+	return vg[get_vendor_group(p)].prefer_high_cap ||
+		get_vendor_task_struct(p)->prefer_high_cap;
+}
+
+inline void set_prefer_high_cap(struct task_struct *p, bool val)
+{
+	get_vendor_task_struct(p)->prefer_high_cap = val;
 }
 
 static inline bool get_task_spreading(struct task_struct *p)
@@ -514,16 +519,13 @@ static inline unsigned int get_group_throttle(struct task_group *tg)
 
 /*
  * If a task is in prefer_idle group, check if it could run on the cpu based on its prio and the
- * prefer_idle cpumask defined, but bail out for bulk wake (wake_q_count > 1).
+ * prefer_idle cpumask defined.
  */
-static inline bool is_preferred_idle_cpu(struct task_struct *p, int cpu)
+static inline bool check_preferred_idle_mask(struct task_struct *p, int cpu)
 {
 	int vendor_group = get_vendor_group(p);
 
-	if (!vg[vendor_group].prefer_idle)
-		return true;
-
-	if (p->wake_q_count > 1)
+	if (!get_prefer_idle(p))
 		return true;
 
 	if (p->prio <= THREAD_PRIORITY_TOP_APP_BOOST) {
@@ -539,7 +541,7 @@ static inline const cpumask_t *get_preferred_idle_mask(struct task_struct *p)
 {
 	int vendor_group = get_vendor_group(p);
 
-	if (p->wake_q_count > 1)
+	if (p->wake_q_count || get_uclamp_fork_reset(p, false))
 		return cpu_possible_mask;
 
 	if (p->prio <= THREAD_PRIORITY_TOP_APP_BOOST) {
@@ -570,7 +572,7 @@ void init_vendor_group_data(void)
 	}
 
 #if IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
-	for (j = 0; j < CPU_NUM; j++) {
+	for (j = 0; j < pixel_cpu_num; j++) {
 		rq = cpu_rq(j);
 
 		for (i = 0; i < UG_MAX; i++) {
@@ -1067,16 +1069,16 @@ struct vendor_util_group_property *get_vendor_util_group_property(enum utilizati
 }
 #endif
 
-static bool task_fits_capacity(struct task_struct *p, int cpu,  bool sync_boost)
+static bool task_fits_capacity(struct task_struct *p, int cpu)
 {
 	unsigned long uclamp_min = uclamp_eff_value_pixel_mod(p, UCLAMP_MIN);
 	unsigned long uclamp_max = uclamp_eff_value_pixel_mod(p, UCLAMP_MAX);
 	unsigned long task_util = task_util_est(p);
 
-	if (cpu >= MAX_CAPACITY_CPU)
+	if (cpu >= pixel_cluster_start_cpu[2])
 		return true;
 
-	if ((get_prefer_high_cap(p) || sync_boost) && cpu < MID_CAPACITY_CPU)
+	if (get_prefer_high_cap(p) && cpu < pixel_cluster_start_cpu[1])
 		return false;
 
 	/*
@@ -1101,9 +1103,9 @@ static inline bool cpu_is_in_target_set(struct task_struct *p, int cpu)
 	int first_cpu, next_usable_cpu;
 
 	if (get_prefer_high_cap(p)) {
-		first_cpu = HIGH_CAPACITY_CPU;
+		first_cpu = pixel_cluster_start_cpu[1];
 	} else {
-		first_cpu = MIN_CAPACITY_CPU;
+		first_cpu = pixel_cluster_start_cpu[0];
 	}
 
 	next_usable_cpu = cpumask_next(first_cpu - 1, p->cpus_ptr);
@@ -1492,7 +1494,7 @@ static u64 __sched_period(unsigned long nr_running)
 		return sysctl_sched_latency;
 }
 
-int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool sync_boost,
+int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu,
 		cpumask_t *valid_mask)
 {
 	struct root_domain *rd;
@@ -1511,7 +1513,8 @@ int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool sync_boo
 	unsigned int exit_lat, pd_best_exit_lat, best_exit_lat;
 	bool is_idle, task_fits, util_fits;
 	bool idle_target_found = false, importance_target_found = false;
-	bool prefer_idle = get_prefer_idle(p), prefer_high_cap = get_prefer_high_cap(p);
+	bool prefer_idle = get_prefer_idle(p);
+	bool prefer_high_cap = get_prefer_high_cap(p);
 	unsigned long capacity, wake_util, cpu_importance, pd_least_cpu_importantce;
 #if IS_ENABLED(CONFIG_USE_GROUP_THROTTLE)
 	bool group_overutilize;
@@ -1522,7 +1525,7 @@ int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool sync_boo
 	int most_spare_cap_cpu = -1, unimportant_max_spare_cap_cpu = -1, idle_max_cap_cpu = -1;
 	struct cpuidle_state *idle_state;
 	unsigned long unimportant_max_spare_cap = 0, idle_max_cap = 0;
-	bool prefer_fit = prefer_idle && get_uclamp_fork_reset(p, true);
+	bool prefer_fit = get_uclamp_fork_reset(p, true);
 	const cpumask_t *preferred_idle_mask;
 
 	rd = cpu_rq(this_cpu)->rd;
@@ -1548,7 +1551,7 @@ int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool sync_boo
 		pd_least_cpu_importantce = SCHED_CAPACITY_SCALE << 2;
 
 		for_each_cpu_and(i, perf_domain_span(pd), valid_mask ? valid_mask : p->cpus_ptr) {
-			if (i >= CPU_NUM)
+			if (i >= pixel_cpu_num)
 				break;
 
 			if (!cpu_active(i))
@@ -1574,7 +1577,7 @@ int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool sync_boo
 #else
 			spare_cap = capacity - wake_util;
 #endif
-			task_fits = task_fits_capacity(p, i, sync_boost);
+			task_fits = task_fits_capacity(p, i);
 			exit_lat = 0;
 
 			if (is_idle) {
@@ -1707,7 +1710,7 @@ int find_energy_efficient_cpu(struct task_struct *p, int prev_cpu, bool sync_boo
 				if (importance_target_found)
 					continue;
 
-				if (prefer_high_cap && i < HIGH_CAPACITY_CPU)
+				if (prefer_high_cap && i < pixel_cluster_start_cpu[1])
 					continue;
 
 				/*
@@ -2003,7 +2006,7 @@ uclamp_tg_restrict_pixel_mod(struct task_struct *p, enum uclamp_id clamp_id)
 {
 	struct uclamp_se uc_req = p->uclamp_req[clamp_id];
 	struct vendor_task_struct *vp = get_vendor_task_struct(p);
-
+	bool is_adpf = get_uclamp_fork_reset(p, true);
 
 #ifdef CONFIG_UCLAMP_TASK_GROUP
 	unsigned int tg_min, tg_max, vnd_min, vnd_max, value;
@@ -2028,9 +2031,9 @@ uclamp_tg_restrict_pixel_mod(struct task_struct *p, enum uclamp_id clamp_id)
 	tg_max = task_group(p)->uclamp[UCLAMP_MAX].value;
 	// Vendor group restriction
 	vnd_min = vg[vp->group].uc_req[UCLAMP_MIN].value;
-	vnd_max = get_uclamp_fork_reset(p, true) ?
+	vnd_max = is_adpf ?
 		uclamp_none(UCLAMP_MAX) : vg[vp->group].uc_req[UCLAMP_MAX].value;
-	if (vg[vp->group].auto_uclamp_max) {
+	if (vg[vp->group].auto_uclamp_max && !is_adpf) {
 		vp->auto_uclamp_max_flags |= AUTO_UCLAMP_MAX_FLAG_GROUP;
 		vnd_max = sched_auto_uclamp_max[task_cpu(p)];
 	} else {
@@ -2146,6 +2149,17 @@ void rvh_check_preempt_wakeup_pixel_mod(void *data, struct rq *rq, struct task_s
 
 	if (entity_is_task(pse) || entity_is_task(se))
 		return;
+
+	/*
+	 * Let ADPF task preempt non-ADPF task.
+	 */
+	if(!get_uclamp_fork_reset(task_of(se), true) && get_uclamp_fork_reset(task_of(pse), true)) {
+		if (!next_buddy_marked)
+			set_next_buddy(pse);
+
+		*preempt = true;
+		return;
+	}
 
 	ideal_runtime = sched_slice(cfs_rq_of(se), se);
 	delta_exec = se->sum_exec_runtime - se->prev_sum_exec_runtime;
@@ -2381,23 +2395,24 @@ void rvh_select_task_rq_fair_pixel_mod(void *data, struct task_struct *p, int pr
 				       int wake_flags, int *target_cpu)
 {
 	int sync = (wake_flags & WF_SYNC) && !(current->flags & PF_EXITING);
-	bool sync_wakeup = false, prefer_prev = false, sync_boost = false;
+	bool sync_wakeup = false, prefer_prev = false;
 	int cpu;
 
 	/* sync wake up */
 	cpu = smp_processor_id();
+
+	set_prefer_high_cap(p, sync && cpu >= pixel_cluster_start_cpu[1]);
+
 	if (sync && cpu_rq(cpu)->nr_running == 1 && cpumask_test_cpu(cpu, p->cpus_ptr) &&
-	     cpu_is_in_target_set(p, cpu) && task_fits_capacity(p, cpu, false)) {
+	     cpu_is_in_target_set(p, cpu) && task_fits_capacity(p, cpu)) {
 		*target_cpu = cpu;
 		sync_wakeup = true;
 		goto out;
 	}
 
-	sync_boost = sync && cpu >= HIGH_CAPACITY_CPU;
-
 	/* prefer prev cpu */
 	if (cpu_active(prev_cpu) && cpu_is_idle(prev_cpu) &&
-	    task_fits_capacity(p, prev_cpu, sync_boost) && is_preferred_idle_cpu(p, prev_cpu)) {
+	    task_fits_capacity(p, prev_cpu) && check_preferred_idle_mask(p, prev_cpu)) {
 
 		struct cpuidle_state *idle_state;
 		unsigned int exit_lat = UINT_MAX;
@@ -2420,35 +2435,32 @@ void rvh_select_task_rq_fair_pixel_mod(void *data, struct task_struct *p, int pr
 	}
 
 	if (sd_flag & SD_BALANCE_WAKE) {
-		*target_cpu = find_energy_efficient_cpu(p, prev_cpu, sync_boost, NULL);
+		*target_cpu = find_energy_efficient_cpu(p, prev_cpu, NULL);
 	}
 
 out:
 	if (trace_sched_select_task_rq_fair_enabled())
 		trace_sched_select_task_rq_fair(p, task_util_est(p),
-						sync_wakeup, prefer_prev, sync_boost,
+						sync_wakeup, prefer_prev,
+						get_vendor_task_struct(p)->prefer_high_cap,
 						get_vendor_group(p),
 						uclamp_eff_value_pixel_mod(p, UCLAMP_MIN),
 						uclamp_eff_value_pixel_mod(p, UCLAMP_MAX),
 						prev_cpu, *target_cpu);
+
+	set_prefer_high_cap(p, false);
 }
 
-void rvh_set_user_nice_pixel_mod(void *data, struct task_struct *p, long *nice, bool *allowed)
+void rvh_set_user_nice_locked_pixel_mod(void *data, struct task_struct *p, long *nice)
 {
 	struct vendor_task_struct *vp;
 	unsigned long flags;
-	struct rq_flags rf;
-	struct rq *rq;
 
 	if (!vendor_sched_boost_adpf_prio)
 		return;
 
-	rq = task_rq_lock(p, &rf);
-
-	if (p->prio < MAX_RT_PRIO) {
-		task_rq_unlock(rq, p, &rf);
+	if (p->prio < MAX_RT_PRIO)
 		return;
-	}
 
 	vp = get_vendor_task_struct(p);
 	if (get_uclamp_fork_reset(p, false)) {
@@ -2461,8 +2473,6 @@ void rvh_set_user_nice_pixel_mod(void *data, struct task_struct *p, long *nice, 
 			prio_changed(p, vp->orig_prio, p->prio);
 		}
 	}
-
-	task_rq_unlock(rq, p, &rf);
 }
 
 void rvh_setscheduler_pixel_mod(void *data, struct task_struct *p)
@@ -2518,8 +2528,8 @@ static struct task_struct *detach_important_task(struct rq *src_rq, int dst_cpu)
 		if (!is_ui && !is_boost)
 			continue;
 
-		if (task_fits_capacity(p, dst_cpu, false)) {
-			if (!task_fits_capacity(p, src_rq->cpu, false)) {
+		if (task_fits_capacity(p, dst_cpu)) {
+			if (!task_fits_capacity(p, src_rq->cpu)) {
 				// if task is fit for new cpu but not old cpu
 				// stop if we found an ADPF UI task
 				// use it as backup if we found a boost task
@@ -2589,7 +2599,6 @@ void sched_newidle_balance_pixel_mod(void *data, struct rq *this_rq, struct rq_f
 
 	if (SCHED_WARN_ON(atomic_read(&this_vrq->num_adpf_tasks)))
 		atomic_set(&this_vrq->num_adpf_tasks, 0);
-
 
 	/*
 	 * We must set idle_stamp _before_ calling idle_balance(), such that we
@@ -2714,10 +2723,8 @@ void rvh_can_migrate_task_pixel_mod(void *data, struct task_struct *mp,
 {
 	struct vendor_rq_struct *vrq = get_vendor_rq_struct(cpu_rq(dst_cpu));
 
-	if (!get_uclamp_fork_reset(mp, true) || !get_prefer_idle(mp))
+	if (!get_prefer_idle(mp))
 		return;
-
-	lockdep_assert_rq_held(cpu_rq(dst_cpu));
 
 	if (atomic_read(&vrq->num_adpf_tasks))
 		*can_migrate = 0;
@@ -2760,11 +2767,13 @@ void rvh_update_blocked_fair_pixel_mod(void *data, struct rq *rq)
 
 void rvh_enqueue_task_fair_pixel_mod(void *data, struct rq *rq, struct task_struct *p, int flags)
 {
-	struct vendor_rq_struct *vrq = get_vendor_rq_struct(rq);
 	bool force_cpufreq_update = false;
 
+	if (!static_branch_unlikely(&enqueue_dequeue_ready))
+		return;
+
 	if (get_uclamp_fork_reset(p, true))
-		inc_adpf_counter(p, &vrq->num_adpf_tasks);
+		inc_adpf_counter(p, rq);
 
 #if IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 	if (likely(sched_feat(UTIL_EST))) {
@@ -2790,10 +2799,11 @@ void rvh_enqueue_task_fair_pixel_mod(void *data, struct rq *rq, struct task_stru
 
 void rvh_dequeue_task_fair_pixel_mod(void *data, struct rq *rq, struct task_struct *p, int flags)
 {
-	struct vendor_rq_struct *vrq = get_vendor_rq_struct(rq);
+	if (!static_branch_unlikely(&enqueue_dequeue_ready))
+		return;
 
 	if (get_uclamp_fork_reset(p, true))
-		dec_adpf_counter(p, &vrq->num_adpf_tasks);
+		dec_adpf_counter(p, rq);
 
 #if IS_ENABLED(CONFIG_USE_VENDOR_GROUP_UTIL)
 	if (likely(sched_feat(UTIL_EST))) {
@@ -2810,4 +2820,44 @@ void rvh_dequeue_task_fair_pixel_mod(void *data, struct rq *rq, struct task_stru
 #endif
 
 	/* Resetting uclamp filter is handled in dequeue_task() */
+}
+
+void rvh_update_misfit_status_pixel_mod(void *data, struct task_struct *p,
+	struct rq *rq, bool *need_update)
+{
+	int cpu;
+	struct root_domain *rd = cpu_rq(smp_processor_id())->rd;
+	struct perf_domain *pd;
+	unsigned long task_util;
+	struct cpumask cluster = { CPU_BITS_NONE };
+
+	rcu_read_lock();
+
+	if (!p || p->nr_cpus_allowed == 1)
+		goto out;
+
+	pd = rcu_dereference(rd->pd);
+	if (!pd)
+		goto out;
+
+	task_util = uclamp_task_util(p);
+
+	for (; pd; pd = pd->next) {
+		cpumask_and(&cluster, p->cpus_ptr, perf_domain_span(pd));
+		cpu = cpumask_first(&cluster);
+
+		if (cpu >= nr_cpu_ids)
+			continue;
+
+		/* update misfit if task p fit cpu */
+		if (task_util < capacity_orig_of(cpu)) {
+			rcu_read_unlock();
+			return;
+		}
+	}
+
+out:
+	rq->misfit_task_load = 0;
+	*need_update = false;
+	rcu_read_unlock();
 }

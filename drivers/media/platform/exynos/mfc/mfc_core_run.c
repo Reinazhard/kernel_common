@@ -572,6 +572,7 @@ int mfc_core_run_enc_frame(struct mfc_core *core, struct mfc_ctx *ctx)
 	if (!reg_test)
 		mfc_core_set_slice_mode(core, ctx);
 	mfc_core_set_enc_config_qp(core, ctx);
+	mfc_core_set_enc_ts_delta(core, ctx);
 
 	mfc_core_cmd_enc_one_frame(core, ctx, last_frame);
 
@@ -590,8 +591,7 @@ int mfc_core_run_enc_last_frames(struct mfc_core *core, struct mfc_ctx *ctx)
 		mfc_debug(2, "no dst buffers set to zero\n");
 
 		if (mfc_core_get_enc_bframe(ctx)) {
-			mfc_ctx_info("B frame encoding should be dst buffer\n");
-			return -EINVAL;
+			mfc_ctx_info("B frame encoding doesn't have dst buffer\n");
 		}
 	}
 

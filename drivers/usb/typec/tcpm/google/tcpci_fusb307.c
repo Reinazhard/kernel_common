@@ -25,7 +25,7 @@
 
 #include "tcpci_otg_helper.h"
 /* This header comes from the GKI kernel tree */
-#include <tcpm/tcpci.h>
+#include <linux/usb/tcpci.h>
 #include "usb_icl_voter.h"
 #include "usb_psy.h"
 

@@ -17,7 +17,7 @@
 #include <linux/usb/role.h>
 #include <linux/usb/typec_mux.h>
 #include <misc/gvotable.h>
-#include <tcpm/tcpci.h>
+#include <linux/usb/tcpci.h>
 
 #include "usb_psy.h"
 
@@ -85,6 +85,7 @@ struct max77759_plat {
 	/* Indicate that the Vbus OVP is restricted to quick ramp-up time for incoming voltage. */
 	bool quick_ramp_vbus_ovp;
 	int reset_ovp_retry;
+	struct mutex ovp_lock;
 	/* Set true to vote "limit_accessory_current" on USB ICL */
 	bool limit_accessory_enable;
 	/* uA */
@@ -201,9 +202,6 @@ struct max77759_plat {
 	/* When true debounce disconnects to prevent user notifications during brief disconnects */
 	bool debounce_adapter_disconnect;
 
-	/* Hold while calling start_toggle and in probe to guard NULL chip->tcpci */
-	struct mutex toggle_lock;
-
 	/* EXT_BST_EN exposed as GPIO */
 #ifdef CONFIG_GPIOLIB
 	struct gpio_chip gpio;
@@ -262,11 +260,11 @@ void enable_data_path_locked(struct max77759_plat *chip);
 void data_alt_path_active(struct max77759_plat *chip, bool active);
 void register_data_active_callback(void (*callback)(void *data_active_payload), void *data);
 
-/* AICL_OK is tracked with COMPLIANCE_WARNING_OTHER */
 #define COMPLIANCE_WARNING_OTHER 0
 #define COMPLIANCE_WARNING_DEBUG_ACCESSORY 1
 #define COMPLIANCE_WARNING_BC12 2
 #define COMPLIANCE_WARNING_MISSING_RP 3
+#define COMPLIANCE_WARNING_INPUT_POWER_LIMITED 4
 
 struct max77759_compliance_warnings {
 	struct max77759_plat *chip;
@@ -274,6 +272,7 @@ struct max77759_compliance_warnings {
 	bool debug_accessory;
 	bool bc12;
 	bool missing_rp;
+	bool input_power_limited;
 };
 
 ssize_t compliance_warnings_to_buffer(struct max77759_compliance_warnings *compliance_warnings,

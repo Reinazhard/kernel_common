@@ -32,7 +32,7 @@
 #include <linux/usb/max77759_export.h>
 #include "max77759_helper.h"
 /* This header comes from the GKI kernel tree */
-#include <tcpm/tcpci.h>
+#include <linux/usb/tcpci.h>
 #include "tcpci_max77759.h"
 #include "tcpci_max77759_vendor_reg.h"
 #include "usb_icl_voter.h"
@@ -643,6 +643,7 @@ void register_data_active_callback(void (*callback)(void *data_active_payload), 
 }
 EXPORT_SYMBOL_GPL(register_data_active_callback);
 
+static void ovp_operation(struct max77759_plat *chip, int operation);
 #ifdef CONFIG_GPIOLIB
 static int ext_bst_en_gpio_get_direction(struct gpio_chip *chip, unsigned int offset)
 {
@@ -664,13 +665,34 @@ static int ext_bst_en_gpio_get(struct gpio_chip *gpio, unsigned int offset)
 
 static void ext_bst_en_gpio_set(struct gpio_chip *gpio, unsigned int offset, int value)
 {
-	int ret;
 	struct max77759_plat *chip = gpiochip_get_data(gpio);
 	struct regmap *regmap = chip->data.regmap;
+	bool vsafe0v, toggle_ovp = false;
+	int ret;
+	u8 raw;
+
+	ret = max77759_read8(regmap, TCPC_EXTENDED_STATUS, &raw);
+	if (ret < 0)
+		vsafe0v = chip->vsafe0v;
+	else
+		vsafe0v = !!(raw & TCPC_EXTENDED_STATUS_VSAFE0V);
+
+	/* b/309900468 toggle ovp to make sure that Vbus is vSafe0V when setting EXT_BST_EN. */
+	if (chip->in_switch_gpio >= 0 && value && !vsafe0v)
+		toggle_ovp = true;
+
+	if (toggle_ovp)
+		ovp_operation(chip, OVP_OFF);
 
 	ret = max77759_write8(regmap, TCPC_VENDOR_EXTBST_CTRL, value ? EXT_BST_EN : 0);
-	LOG(LOG_LVL_DEBUG, chip->log,
-	    "%s: TCPC_VENDOR_EXTBST_CTRL value%d ret:%d", __func__, value, ret);
+	LOG(LOG_LVL_DEBUG, chip->log, "%s: TCPC_VENDOR_EXTBST_CTRL value:%d ret:%d", __func__,
+	    value, ret);
+
+	if (toggle_ovp) {
+		mdelay(10);
+
+		ovp_operation(chip, OVP_ON);
+	}
 }
 
 static int ext_bst_en_gpio_init(struct max77759_plat *chip)
@@ -916,6 +938,8 @@ ssize_t compliance_warnings_to_buffer(struct max77759_compliance_warnings *compl
 		strncat(buf, "bc12, ", strlen("bc12, "));
 	if (compliance_warnings->missing_rp)
 		strncat(buf, "missing_rp, ", strlen("missing_rp, "));
+	if (compliance_warnings->input_power_limited)
+		strncat(buf, "input_power_limited, ", strlen("input_power_limited, "));
 	strncat(buf, "]", strlen("]"));
 	return strnlen(buf, PAGE_SIZE);
 }
@@ -940,6 +964,11 @@ void update_compliance_warnings(struct max77759_plat *chip, int warning, bool va
 	case COMPLIANCE_WARNING_MISSING_RP:
 		compliance_warnings_changed = (chip->compliance_warnings->missing_rp != value);
 		chip->compliance_warnings->missing_rp = value;
+		break;
+	case COMPLIANCE_WARNING_INPUT_POWER_LIMITED:
+		compliance_warnings_changed =
+				(chip->compliance_warnings->input_power_limited != value);
+		chip->compliance_warnings->input_power_limited = value;
 		break;
 	}
 
@@ -1203,9 +1232,9 @@ void disconnect_missing_rp_partner(struct max77759_plat *chip)
 	update_compliance_warnings(chip, COMPLIANCE_WARNING_MISSING_RP, false);
 	/*
 	 * clear AICL warning for missing rp as detach will not be signalled for
-	 * MISSING_RP + OTHER(AICL)
+	 * MISSING_RP + INPUT_POWER_LIMITED(AICL)
 	 */
-	update_compliance_warnings(chip, COMPLIANCE_WARNING_OTHER, false);
+	update_compliance_warnings(chip, COMPLIANCE_WARNING_INPUT_POWER_LIMITED, false);
 	chip->vbus_mv = 0;
 	/* val.intval does not matter */
 	ret = power_supply_set_property(chip->usb_psy, POWER_SUPPLY_PROP_VOLTAGE_MAX, &val);
@@ -1491,14 +1520,15 @@ static void ovp_operation(struct max77759_plat *chip, int operation)
 {
 	int gpio_val, retry = 0;
 
+	mutex_lock(&chip->ovp_lock);
 	if (operation == OVP_RESET || operation == OVP_OFF) {
 		do {
 			gpio_set_value_cansleep(chip->in_switch_gpio,
 						!chip->in_switch_gpio_active_high);
-			gpio_val = gpio_get_value(chip->in_switch_gpio);
+			gpio_val = gpio_get_value_cansleep(chip->in_switch_gpio);
 			LOG(LOG_LVL_DEBUG, chip->log,
-				      "%s: OVP disable gpio_val:%d in_switch_gpio_active_high:%d retry:%d",
-				       __func__, gpio_val, chip->in_switch_gpio_active_high, retry++);
+			    "%s: OVP disable gpio_val:%d in_switch_gpio_active_high:%d retry:%d",
+			    __func__, gpio_val, chip->in_switch_gpio_active_high, retry++);
 		} while ((gpio_val != !chip->in_switch_gpio_active_high) && (retry < OVP_OP_RETRY));
 	}
 
@@ -1510,12 +1540,13 @@ static void ovp_operation(struct max77759_plat *chip, int operation)
 		do {
 			gpio_set_value_cansleep(chip->in_switch_gpio,
 						chip->in_switch_gpio_active_high);
-			gpio_val = gpio_get_value(chip->in_switch_gpio);
+			gpio_val = gpio_get_value_cansleep(chip->in_switch_gpio);
 			LOG(LOG_LVL_DEBUG, chip->log,
-				      "%s: OVP enable gpio_val:%d in_switch_gpio_active_high:%d retry:%d",
-				      __func__, gpio_val, chip->in_switch_gpio_active_high, retry++);
+			    "%s: OVP enable gpio_val:%d in_switch_gpio_active_high:%d retry:%d",
+			    __func__, gpio_val, chip->in_switch_gpio_active_high, retry++);
 		} while ((gpio_val != chip->in_switch_gpio_active_high) && (retry < OVP_OP_RETRY));
 	}
+	mutex_unlock(&chip->ovp_lock);
 }
 
 static void reset_ovp_work(struct kthread_work *work)
@@ -1795,7 +1826,7 @@ static irqreturn_t _max77759_irq_locked(struct max77759_plat *chip, u16 status,
 				if (chip->contaminant_detection_userspace !=
 					CONTAMINANT_DETECT_DISABLE)
 					disable_auto_ultra_low_power_mode(chip, false);
-			} else if (!chip->usb_throttled) {
+			} else if (!chip->usb_throttled && chip->contaminant_detection) {
 				/*
 				 * TCPM has not detected valid CC terminations
 				 * and neither the comparators nor ADC
@@ -2039,6 +2070,10 @@ static int max77759_start_toggling(struct tcpci *tcpci,
 	int ret;
 	enum typec_cc_status cc1, cc2;
 
+	/* Wait for tcpci_register_port to finish. */
+	while (READ_ONCE(chip->tcpci) == NULL)
+		cpu_relax();
+
 	max77759_get_cc(chip, &cc1, &cc2);
 
 	switch (cc) {
@@ -2065,9 +2100,7 @@ static int max77759_start_toggling(struct tcpci *tcpci,
 		reg |= (TCPC_ROLE_CTRL_CC_RP << TCPC_ROLE_CTRL_CC1_SHIFT) |
 			(TCPC_ROLE_CTRL_CC_RP << TCPC_ROLE_CTRL_CC2_SHIFT);
 
-	mutex_lock(&chip->toggle_lock);
 	max77759_init_regs(chip->tcpci->regmap, chip->log);
-	mutex_unlock(&chip->toggle_lock);
 
 	chip->role_ctrl_cache = reg;
 	mutex_lock(&chip->rc_lock);
@@ -2337,13 +2370,13 @@ static int max77759_usb_set_role(struct usb_role_switch *sw, enum usb_role role)
 		bc12_enable(chip->bc12, true);
 
 	/*
-	 * Clear COMPLIANCE_WARNING_OTHER which tracks AICL_ACTIVE only upon disconnect.
-	 * This prevents the incommpatible charging notification to not change status
+	 * Clear COMPLIANCE_WARNING_INPUT_POWER_LIMITED which tracks AICL_ACTIVE only upon
+	 * disconnect. This prevents the incommpatible charging notification to not change status
 	 * during the charging session. AICL active is system/battery load dependent and
 	 * hence can change status during a charge session.
 	 */
 	if (!attached) {
-		update_compliance_warnings(chip, COMPLIANCE_WARNING_OTHER, false);
+		update_compliance_warnings(chip, COMPLIANCE_WARNING_INPUT_POWER_LIMITED, false);
 		/* Clear BC12 as fallback when hardware does not clear it on disconnect. */
 		update_compliance_warnings(chip, COMPLIANCE_WARNING_BC12, false);
 	}
@@ -2749,20 +2782,24 @@ static void max_tcpci_check_contaminant(struct tcpci *tcpci, struct tcpci_data *
 		mutex_unlock(&chip->rc_lock);
 		return;
 	}
-	if (chip->contaminant_detection)
+	if (chip->contaminant_detection) {
 		ret = process_contaminant_alert(chip->contaminant, true, false,
 						&contaminant_cc_status_handled,
 						&port_clean);
-	if (ret < 0) {
-		logbuffer_logk(chip->log, LOGLEVEL_ERR, "I/O error in %s", __func__);
-		/* Assume clean port */
-		tcpm_port_clean(chip->port);
-	} else if (port_clean) {
-		LOG(LOG_LVL_DEBUG, chip->log, "port clean");
-		tcpm_port_clean(chip->port);
+		if (ret < 0) {
+			logbuffer_logk(chip->log, LOGLEVEL_ERR, "I/O error in %s", __func__);
+			/* Assume clean port */
+			tcpm_port_clean(chip->port);
+		} else if (port_clean) {
+			LOG(LOG_LVL_DEBUG, chip->log, "port clean");
+			tcpm_port_clean(chip->port);
+		} else {
+			LOG(LOG_LVL_DEBUG, chip->log, "port dirty");
+			chip->check_contaminant = true;
+		}
 	} else {
-		LOG(LOG_LVL_DEBUG, chip->log, "port dirty");
-		chip->check_contaminant = true;
+		LOG(LOG_LVL_DEBUG, chip->log, "port clean; Contaminant detection not enabled");
+		tcpm_port_clean(chip->port);
 	}
 	mutex_unlock(&chip->rc_lock);
 }
@@ -2972,13 +3009,13 @@ static void aicl_check_alarm_work_item(struct kthread_work *work)
 						  aicl_check_alarm_work);
 
 	/*
-	 * Set here and clear COMPLIANCE_WARNING_OTHER which tracks AICL_ACTIVE only upon
-	 * disconnect. This prevents the incommpatible charging notification to not change status
-	 * during the charging session. AICL active is system/battery load dependent and hence
-	 * can change status during a charge session.
+	 * Set here and clear COMPLIANCE_WARNING_INPUT_POWER_LIMITED which tracks AICL_ACTIVE only
+	 * upon disconnect. This prevents the incommpatible charging notification to not change
+	 * status during the charging session. AICL active is system/battery load dependent and
+	 * hence can change status during a charge session.
 	 */
 	if (is_aicl_limited(chip))
-		update_compliance_warnings(chip, COMPLIANCE_WARNING_OTHER, true);
+		update_compliance_warnings(chip, COMPLIANCE_WARNING_INPUT_POWER_LIMITED, true);
 }
 
 static enum alarmtimer_restart aicl_check_alarm_handler(struct alarm *alarm, ktime_t time)
@@ -3098,7 +3135,7 @@ static int max77759_probe(struct i2c_client *client,
 	mutex_init(&chip->data_path_lock);
 	mutex_init(&chip->rc_lock);
 	mutex_init(&chip->irq_status_lock);
-	mutex_init(&chip->toggle_lock);
+	mutex_init(&chip->ovp_lock);
 	spin_lock_init(&g_caps_lock);
 	chip->first_toggle = true;
 	chip->first_rp_missing_timeout = true;
@@ -3250,7 +3287,11 @@ static int max77759_probe(struct i2c_client *client,
 	/* Default enable on A1 or higher */
 	chip->contaminant_detection = device_id >= MAX77759_DEVICE_ID_A1;
 	chip->contaminant_detection_userspace = chip->contaminant_detection;
-	chip->contaminant = max77759_contaminant_init(chip, chip->contaminant_detection);
+	if (chip->contaminant_detection) {
+		LOG(LOG_LVL_DEBUG, chip->log, "Contaminant detection enabled");
+		chip->data.check_contaminant = max_tcpci_check_contaminant;
+		chip->contaminant = max77759_contaminant_init(chip, chip->contaminant_detection);
+	}
 
 	ret = max77759_setup_data_notifier(chip);
 	if (ret < 0)
@@ -3322,9 +3363,7 @@ static int max77759_probe(struct i2c_client *client,
 	}
 	gvotable_set_vote2str(chip->aicl_active_el, gvotable_v2s_int);
 
-	mutex_lock(&chip->toggle_lock);
 	chip->tcpci = tcpci_register_port(chip->dev, &chip->data);
-	mutex_unlock(&chip->toggle_lock);
 	if (IS_ERR_OR_NULL(chip->tcpci)) {
 		dev_err(&client->dev, "TCPCI port registration failed");
 		ret = PTR_ERR(chip->tcpci);

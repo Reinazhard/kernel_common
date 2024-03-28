@@ -89,7 +89,7 @@ static int dwc3_otg_statemachine(struct otg_fsm *fsm)
 	case OTG_STATE_A_IDLE:
 		if (fsm->id) {
 			otg->state = OTG_STATE_B_IDLE;
-		} else {
+		} else if (dotg->host_ready) {
 			ret = otg_start_host(fsm, 1);
 			if (!ret) {
 				otg_drv_vbus(fsm, 1);
@@ -100,7 +100,7 @@ static int dwc3_otg_statemachine(struct otg_fsm *fsm)
 		}
 		break;
 	case OTG_STATE_A_HOST:
-		if (fsm->id) {
+		if (fsm->id || !dotg->host_ready) {
 			otg_drv_vbus(fsm, 0);
 			ret = otg_start_host(fsm, 0);
 			if (!ret)
@@ -459,6 +459,28 @@ static struct otg_fsm_ops dwc3_otg_fsm_ops = {
 
 /* -------------------------------------------------------------------------- */
 
+static void dwc3_otg_desired_role_update(struct dwc3_otg *dotg, int id, int b_sess_vld) {
+	enum usb_role role;
+
+	if (!id) {
+		role = USB_ROLE_HOST;
+	} else if (b_sess_vld) {
+		role = USB_ROLE_DEVICE;
+	} else {
+		role = USB_ROLE_NONE;
+	}
+
+	if (role == dotg->desired_role)
+		return;
+
+	dotg->desired_role = role;
+	if (!dotg->desired_role_kn)
+		dotg->desired_role_kn = sysfs_get_dirent(dotg->exynos->dev->kobj.sd,
+							 "new_data_role");
+	if (dotg->desired_role_kn)
+		sysfs_notify_dirent(dotg->desired_role_kn);
+}
+
 void dwc3_otg_run_sm(struct otg_fsm *fsm)
 {
 	struct dwc3_otg	*dotg = container_of(fsm, struct dwc3_otg, fsm);
@@ -469,6 +491,8 @@ void dwc3_otg_run_sm(struct otg_fsm *fsm)
 		return;
 
 	mutex_lock(&fsm->lock);
+
+	dwc3_otg_desired_role_update(dotg, fsm->id, fsm->b_sess_vld);
 
 	do {
 		state_changed = dwc3_otg_statemachine(fsm);
@@ -699,7 +723,7 @@ static struct dwc3_exynos *exynos_dwusb_get_struct(void)
 	return NULL;
 }
 
-int dwc3_otg_fsm_try_reset(bool reset)
+int dwc3_otg_host_ready(bool ready)
 {
 	struct dwc3_exynos *exynos;
 	struct otg_fsm  *fsm;
@@ -715,15 +739,14 @@ int dwc3_otg_fsm_try_reset(bool reset)
 	fsm = &exynos->dotg->fsm;
 	otg = fsm->otg;
 	dotg = container_of(otg, struct dwc3_otg, otg);
-	dotg->fsm_reset = reset;
+	dotg->host_ready = ready;
 
-	// Skip role switch when we are resetting in gadget state
-	if (!(dotg->fsm_reset && fsm->b_sess_vld))
-		dwc3_otg_run_sm(fsm);
+	dev_info(exynos->dev, "host mode %s\n", ready ? "ready" : "unready");
+	dwc3_otg_run_sm(fsm);
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(dwc3_otg_fsm_try_reset);
+EXPORT_SYMBOL_GPL(dwc3_otg_host_ready);
 
 bool dwc3_otg_check_usb_suspend(struct dwc3_exynos *exynos)
 {
@@ -915,6 +938,7 @@ int dwc3_exynos_otg_init(struct dwc3 *dwc, struct dwc3_exynos *exynos)
 	dotg->otg.set_host = NULL;
 
 	dotg->otg.state = OTG_STATE_UNDEFINED;
+	dotg->host_ready = false;
 	dotg->in_shutdown = false;
 
 	mutex_init(&dotg->fsm.lock);
@@ -964,6 +988,7 @@ void dwc3_exynos_otg_exit(struct dwc3 *dwc, struct dwc3_exynos *exynos)
 	if (!dotg->ext_otg_ops)
 		return;
 
+	sysfs_put(dotg->desired_role_kn);
 	unregister_pm_notifier(&dotg->pm_nb);
 
 	dwc3_ext_otg_exit(dotg);

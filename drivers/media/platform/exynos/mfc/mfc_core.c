@@ -22,6 +22,7 @@
 #include <linux/poll.h>
 #include <linux/vmalloc.h>
 #include <linux/iommu.h>
+#include <linux/pm_runtime.h>
 
 #include "mfc_common.h"
 
@@ -53,6 +54,7 @@
 #include "mfc_utils.h"
 #include "mfc_buf.h"
 #include "mfc_mem.h"
+#include "mfc_rm.h"
 
 #define MFC_CORE_NAME			"mfc-core"
 
@@ -890,6 +892,9 @@ static int mfc_core_suspend(struct device *device)
 	struct mfc_core *core = platform_get_drvdata(to_platform_device(device));
 	int ret;
 
+	if (pm_runtime_status_suspended(device))
+		return 0;
+
 	if (!core) {
 		dev_err(device, "no mfc device to run\n");
 		return -EINVAL;
@@ -898,7 +903,12 @@ static int mfc_core_suspend(struct device *device)
 	if (core->num_inst == 0)
 		return 0;
 
-	mfc_core_info("MFC core suspend is called\n");
+	if (core->sleep == 1) {
+		mfc_core_info("MFC core is slept\n");
+		return 0;
+	}
+
+	mfc_core_debug(2, "MFC core suspend is called\n");
 
 	ret = mfc_core_get_hwlock_dev(core);
 	if (ret < 0) {
@@ -909,6 +919,17 @@ static int mfc_core_suspend(struct device *device)
 				core->hwlock.wl_count,
 				core->hwlock.transfer_owner);
 		return -EBUSY;
+	}
+
+	/*
+	 * Prevent a timing issue that can occur when the power manager (PM)
+	 * and the idle worker both call the mfc_core_suspend function at the
+	 * same time.
+	 */
+	if (core->sleep == 1) {
+		mfc_core_info("MFC core is slept\n");
+		mfc_core_release_hwlock_dev(core);
+		return 0;
 	}
 
 	if (!mfc_core_pm_get_pwr_ref_cnt(core)) {
@@ -933,7 +954,7 @@ static int mfc_core_suspend(struct device *device)
 
 	mfc_core_release_hwlock_dev(core);
 
-	mfc_core_info("MFC suspend is completed\n");
+	mfc_core_debug(2, "MFC suspend is completed\n");
 
 	return 0;
 }
@@ -945,6 +966,9 @@ static int mfc_core_resume(struct device *device)
 	struct mfc_dev *dev;
 	int ret;
 
+	if (pm_runtime_status_suspended(device))
+		return 0;
+
 	if (!core) {
 		dev_err(device, "no mfc core to run\n");
 		return -EINVAL;
@@ -954,7 +978,24 @@ static int mfc_core_resume(struct device *device)
 	if (core->num_inst == 0)
 		return 0;
 
-	mfc_core_info("MFC core resume is called\n");
+	if ((core->idle_mode == MFC_IDLE_MODE_IDLE) && idle_suspend_enable) {
+		core_ctx = core->core_ctx[core->curr_core_ctx];
+		if (core_ctx) {
+			/* Trigger idle resume instead of core resume */
+			mfc_rm_qos_control(core_ctx->ctx, MFC_QOS_TRIGGER);
+			return 0;
+		} else {
+			dev_err(device, "no mfc context to run\n");
+			return -EINVAL;
+		}
+	}
+
+	if (core->sleep == 0) {
+		mfc_core_info("MFC core is not slept\n");
+		return 0;
+	}
+
+	mfc_core_debug(2, "MFC core resume is called\n");
 
 	ret = mfc_core_get_hwlock_dev(core);
 	if (ret < 0) {
@@ -985,7 +1026,7 @@ static int mfc_core_resume(struct device *device)
 
 	mfc_core_release_hwlock_dev(core);
 
-	mfc_core_info("MFC resume is completed\n");
+	mfc_core_debug(2, "MFC resume is completed\n");
 
 	return 0;
 }

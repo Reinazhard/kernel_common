@@ -62,6 +62,7 @@
 #ifdef CONFIG_SOC_ZUMA
 #include <soc/google/exynos-cpupm.h>
 #endif
+#include <soc/google/pkvm-s2mpu.h>
 
 /* These are the possible values for the status field from the specification */
 enum eh_cdesc_status {
@@ -445,7 +446,7 @@ static void request_to_sw_fifo(struct eh_device *eh_dev,
 	req->priv = priv;
 
 	spin_lock(&fifo->lock);
-	list_add(&req->list, &fifo->head);
+	list_add_tail(&req->list, &fifo->head);
 	fifo->count++;
 	spin_unlock(&fifo->lock);
 	wake_up(&eh_dev->comp_wq);
@@ -693,11 +694,18 @@ static void eh_abort_incomplete_descriptors(struct eh_device *eh_dev)
 	}
 }
 
+static bool ready_to_run(struct eh_device *eh_dev, bool *slept)
+{
+	if (atomic_read(&eh_dev->nr_request) || !sw_fifo_empty(&eh_dev->sw_fifo))
+		return true;
+
+	*slept = true;
+	return false;
+}
+
 static int eh_comp_thread(void *data)
 {
 	struct eh_device *eh_dev = data;
-	DEFINE_WAIT(wait);
-	int nr_processed = 0;
 	struct sched_attr attr = {
 		.sched_policy = SCHED_NORMAL,
 		.sched_nice = -10,
@@ -705,40 +713,36 @@ static int eh_comp_thread(void *data)
 
 	WARN_ON_ONCE(sched_setattr_nocheck(current, &attr) != 0);
 	current->flags |= PF_MEMALLOC;
+	set_freezable();
 
 	while (!kthread_should_stop()) {
 		int ret;
+		bool slept = false;
 
-		prepare_to_wait(&eh_dev->comp_wq, &wait, TASK_IDLE);
-		if (atomic_read(&eh_dev->nr_request) == 0 &&
-		    sw_fifo_empty(&eh_dev->sw_fifo)) {
-			eh_dev->nr_compressed += nr_processed;
 #ifdef CONFIG_SOC_ZUMA
-			/*
-			 * On the worst case with race with request_to_hw_fifo,
-			 * this call could update IP as idle state but that
-			 * should be okay because the eh_comp_thread will never
-			 * sleep due to wake_up in the request_to_hw_fifo and
-			 * nr_request positive number check and PM let never
-			 * allowing entering SICD mode as long as system has a
-			 * runnable process.
-			 */
-			exynos_update_ip_idle_status(eh_dev->ip_index, 1);
+		/*
+		 * On the worst case with race with request_to_hw_fifo,
+		 * this call could update IP as idle state but that
+		 * should be okay because the eh_comp_thread will never
+		 * sleep due to wake_up in the request_to_hw_fifo and
+		 * nr_request positive number check and PM let never
+		 * allowing entering SICD mode as long as system has a
+		 * runnable process.
+		 */
+		exynos_update_ip_idle_status(eh_dev->ip_index, 1);
 #endif
-			schedule();
-#ifdef CONFIG_SOC_ZUMA
-			exynos_update_ip_idle_status(eh_dev->ip_index, 0);
-#endif
-			nr_processed = 0;
-			/*
-			 * The condition check above is racy so the schedule
-			 * couldn't schedule out the process but it should be
-			 * rare and the stat doesn't need to be precise.
-			 */
+		wait_event_freezable(eh_dev->comp_wq, ready_to_run(eh_dev, &slept));
+
+		/*
+		 * The condition check above is racy so the schedule
+		 * couldn't schedule out the process but it should be
+		 * rare and the stat doesn't need to be precise.
+		 */
+		if (slept)
 			eh_dev->nr_run++;
-		}
-		finish_wait(&eh_dev->comp_wq, &wait);
-
+#ifdef CONFIG_SOC_ZUMA
+		exynos_update_ip_idle_status(eh_dev->ip_index, 0);
+#endif
 		ret = eh_process_compress(eh_dev);
 		if (unlikely(ret < 0)) {
 			unsigned long error;
@@ -765,11 +769,11 @@ static int eh_comp_thread(void *data)
 		 */
 		if (ret == 0)
 			usleep_range(5, 10);
+		else
+			eh_dev->nr_compressed += ret;
 
 		if (!fifo_full(eh_dev))
 			flush_sw_fifo(eh_dev);
-
-		nr_processed += ret;
 	}
 
 #ifdef CONFIG_SOC_ZUMA
@@ -1288,25 +1292,24 @@ static int eh_of_probe(struct platform_device *pdev)
 {
 	struct eh_device *eh_dev;
 	struct resource *mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	int ret;
+	int ret = 0;
 	int error_irq = 0;
 	unsigned short quirks = 0;
 	struct clk *clk;
 	int sw_fifo_size = EH_SW_FIFO_SIZE;
-	struct device_node *s2mpu_np;
-	struct platform_device *s2mpu_pdev;
 
 	pr_info("starting probing\n");
 
-	s2mpu_np = of_parse_phandle(pdev->dev.of_node, "s2mpus", 0);
-	if (s2mpu_np) {
-		s2mpu_pdev = of_find_device_by_node(s2mpu_np);
-		of_node_put(s2mpu_np);
-		if (s2mpu_pdev) {
-			dev_info(&pdev->dev," link setup with %s\n", dev_name(&s2mpu_pdev->dev));
-			device_link_add(&pdev->dev, &s2mpu_pdev->dev,
-					DL_FLAG_AUTOREMOVE_CONSUMER | DL_FLAG_PM_RUNTIME);
-		}
+#if IS_ENABLED(CONFIG_PKVM_S2MPU_V9)
+	ret = pkvm_s2mpu_of_link_v9(&pdev->dev);
+#elif IS_ENABLED(CONFIG_PKVM_S2MPU)
+	ret = pkvm_s2mpu_of_link(&pdev->dev);
+#endif
+	if (ret == -EAGAIN) {
+		return -EPROBE_DEFER;
+	} else if (ret) {
+		dev_err(&pdev->dev, "can't link with s2mpu, error %d\n", ret);
+		return ret;
 	}
 
 	pm_runtime_enable(&pdev->dev);
