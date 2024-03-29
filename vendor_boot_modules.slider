@@ -13,7 +13,9 @@ aoc_core.ko
 aoc_usb_driver.ko
 aoc_uwb_platform_drv.ko
 aoc_uwb_service_dev.ko
+arm-cmn.ko
 arm-memlat-mon-legacy.ko
+at24.ko
 audiometrics.ko
 bc_max77759.ko
 bcm47765.ko
@@ -83,10 +85,12 @@ hardlockup-debug.ko
 hardlockup-watchdog.ko
 heatmap.ko
 i2c-acpm.ko
+i2c-dev.ko
 i2c-exynos5.ko
 itmon.ko
 keycombo.ko
 keydebug.ko
+ln8411.ko
 logbuffer.ko
 mailbox-wc.ko
 mali_kbase.ko
@@ -110,7 +114,9 @@ max77779_pmic_sgpio.ko
 max77826-gs-regulator.ko
 memlat-devfreq.ko
 odpm_legacy.ko
+open-dice.ko
 p9221.ko
+panel-common.ko
 panel-samsung-drv.ko
 panel-samsung-emul.ko
 pca9468.ko
@@ -149,6 +155,7 @@ samsung_dma_heap.ko
 samsung_iommu.ko
 sbb-mux.ko
 sched_tp.ko
+sg.ko
 shm_ipc.ko
 sjtag-driver.ko
 slc_acpm.ko
@@ -162,6 +169,7 @@ snd-soc-cs35l41-spi.ko
 snd-soc-cs35l41.ko
 snd-soc-wm-adsp.ko
 spi-s3c64xx.ko
+spidev.ko
 spmi_bit_bang.ko
 sscoredump.ko
 st21nfc.ko
