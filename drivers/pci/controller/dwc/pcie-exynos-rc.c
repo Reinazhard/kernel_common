@@ -3363,9 +3363,7 @@ retry:
 	val |= L1_REQ_NAK_CONTROL_MASTER;
 	exynos_elbi_write(exynos_pcie, val, PCIE_APP_REQ_EXIT_L1_MODE);
 	exynos_elbi_write(exynos_pcie, PCIE_LINKDOWN_RST_MANUAL, PCIE_LINKDOWN_RST_CTRL_SEL);
-#if IS_ENABLED(CONFIG_SOC_ZUMA)
 	exynos_elbi_write(exynos_pcie, 0x1, PCIE_APP_XFER_PENDING);
-#endif
 
 	/* Q-Channel support */
 	val = exynos_elbi_read(exynos_pcie, PCIE_QCH_SEL);
@@ -3457,9 +3455,7 @@ retry:
 			exynos_pcie_rc_register_dump(exynos_pcie->ch_num);
 			exynos_pcie->link_stats.link_recovery_failure_count++;
 
-#if IS_ENABLED(CONFIG_SOC_ZUMA)
 			exynos_elbi_write(exynos_pcie, 0x0, PCIE_APP_XFER_PENDING);
-#endif
 
 			if (exynos_pcie->ip_ver >= 0x889000 &&
 			    exynos_pcie->ep_device_type == EP_BCM_WIFI) {
@@ -3545,9 +3541,7 @@ retry:
 		exynos_pcie_rc_prog_viewport_cfg0(pp, busdev);
 		exynos_pcie_rc_prog_viewport_mem_outbound(pp);
 
-#if IS_ENABLED(CONFIG_SOC_ZUMA)
 		exynos_elbi_write(exynos_pcie, 0x0, PCIE_APP_XFER_PENDING);
-#endif
 	}
 
 	return 0;
