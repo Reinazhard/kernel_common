@@ -196,6 +196,7 @@ kernel_build(
         # keep sorted
         "//private/google-modules/bms/misc:bms-misc.kconfig",
         "//private/google-modules/power/reset:reset.kconfig",
+        "//private/google-modules/soc/gs:arch/arm64/configs/slider_gki.fragment",
         "//private/google-modules/soc/gs:build.config.gs101",
         "//private/google-modules/soc/gs:build.config.slider.blktest",
         "//private/google-modules/soc/gs:build.config.slider.debug_api",
