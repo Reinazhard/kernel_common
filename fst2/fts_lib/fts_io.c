@@ -22,7 +22,7 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/string.h>
-#include <stdarg.h>
+#include <linux/stdarg.h>
 #include <linux/delay.h>
 #include <linux/ctype.h>
 #include <linux/of_gpio.h>
@@ -49,7 +49,7 @@ static int reset_gpio = GPIO_NOT_DEFINED;
   *slave
   * @return client if it was previously set or NULL in all the other cases
   */
-struct i2c_client *get_client()
+struct i2c_client *get_client(void)
 {
 	if (client != NULL)
 		return (struct i2c_client *)client;
@@ -62,7 +62,7 @@ struct i2c_client *get_client()
   *slave
   * @return client if it was previously set or NULL in all the other cases
   */
-struct spi_device *get_client()
+struct spi_device *get_client(void)
 {
 	if (client != NULL)
 		return (struct spi_device *)client;
@@ -146,7 +146,8 @@ int fts_read(u8 *out_buf, int byte_to_read)
 	spi_message_init(&msg);
 
 	transfer[0].len = byte_to_read;
-	transfer[0].delay_usecs = SPI_DELAY_CS;
+	transfer[0].delay.value = SPI_DELAY_CS;
+	transfer[0].delay.unit = SPI_DELAY_UNIT_USECS;
 	transfer[0].tx_buf = NULL;
 	transfer[0].rx_buf = out_buf;
 	spi_message_add_tail(&transfer[0], &msg);
@@ -215,7 +216,8 @@ int fts_write_read(u8 *cmd, int cmd_length, u8 *out_buf, int byte_to_read)
 	spi_message_add_tail(&transfer[0], &msg);
 
 	transfer[1].len = byte_to_read;
-	transfer[1].delay_usecs = SPI_DELAY_CS;
+	transfer[1].delay.value = SPI_DELAY_CS;
+	transfer[1].delay.unit = SPI_DELAY_UNIT_USECS;
 	transfer[1].tx_buf = NULL;
 	transfer[1].rx_buf = out_buf;
 	spi_message_add_tail(&transfer[1], &msg);
@@ -281,7 +283,8 @@ int fts_write(u8 *cmd, int cmd_length)
 	spi_message_init(&msg);
 
 	transfer[0].len = cmd_length;
-	transfer[0].delay_usecs = SPI_DELAY_CS;
+	transfer[0].delay.value = SPI_DELAY_CS;
+	transfer[0].delay.unit = SPI_DELAY_UNIT_USECS;
 	transfer[0].tx_buf = cmd;
 	transfer[0].rx_buf = NULL;
 	spi_message_add_tail(&transfer[0], &msg);
