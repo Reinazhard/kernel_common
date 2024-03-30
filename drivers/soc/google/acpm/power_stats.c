@@ -21,11 +21,21 @@
 
 #include <soc/google/acpm_ipc_ctrl.h>
 #include <soc/google/exynos-pd.h>
+#if defined(CONFIG_SOC_ZUMA)
+#include "fw_header/acpm_power_stats_zuma.h"
+#else
 #include "fw_header/acpm_power_stats.h"
+#endif
 
 #define GS_POWER_STATS_PREFIX "power_stats: "
 
+#if defined(CONFIG_SOC_GS101)
+static char const *const mif_user_names[NUM_MIF_USERS] = { "AOC", "GSA" };
+#elif defined(CONFIG_SOC_GS201)
+static char const *const mif_user_names[NUM_MIF_USERS] = { "AOC", "GSA", "TPU" };
+#elif defined(CONFIG_SOC_ZUMA)
 static char const *const mif_user_names[NUM_MIF_USERS] = { "AOC", "GSA", "TPU", "AUR"};
+#endif
 
 static char const *const slc_user_names[NUM_SLC_USERS] = { "AOC" };
 
@@ -36,12 +46,23 @@ static char const *const sys_powermode_names[NUM_SYS_POWERMODE] = {
 static char const *const cluster_names[NUM_CLUSTERS] = { "CLUSTER0", "CLUSTER1",
 							 "CLUSTER2" };
 
+#if defined(CONFIG_SOC_ZUMA)
 static char const *const core_names[NUM_CORES] = { "CORE00", "CORE01", "CORE02",
 						   "CORE03", "CORE10", "CORE11",
 						   "CORE12", "CORE13", "CORE21" };
+#else
+static char const *const core_names[NUM_CORES] = { "CORE00", "CORE01", "CORE02",
+						   "CORE03", "CORE10", "CORE11",
+						   "CORE20", "CORE21" };
+#endif
 
+#if defined(CONFIG_SOC_GS101)
 static char const *const domain_names[NUM_DOMAINS] = { "MIF", "TPU", "CL0",
-						       "CL1", "CL2", "AUR"};
+						       "CL1", "CL2" };
+#elif defined(CONFIG_SOC_GS201) || defined(CONFIG_SOC_ZUMA)
+static char const *const domain_names[NUM_DOMAINS] = { "MIF", "TPU", "CL0",
+						       "CL1", "CL2", "AUR" };
+#endif
 
 struct pd_entry {
 	struct list_head entry;
@@ -250,7 +271,11 @@ static ssize_t print_histogram(struct power_stats_device *ps_dev, char *buf,
 	ssize_t s = 0;
 
 	for (i = 0; i < MAX_NUM_FREQS; i++) {
+#if defined(CONFIG_SOC_ZUMA)
 		if (hist->freqs[i] == 0)
+#else
+		if (hist->freq_count[i] == 0)
+#endif
 			break;
 
 		elapsed_time = (hist->cur_freq == hist->freqs[i]) ?

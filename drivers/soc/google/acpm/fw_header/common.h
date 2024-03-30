@@ -9,7 +9,11 @@
 #define __COMMON_H__
 
 #ifndef CONFIG_GS_ACPM_MODULE
+#if defined(CONFIG_SOC_ZUMA)
+#include "acpm_power_stats_zuma.h"
+#else
 #include "acpm_power_stats.h"
+#endif
 #else
 struct power_stats_buffer;
 #endif
