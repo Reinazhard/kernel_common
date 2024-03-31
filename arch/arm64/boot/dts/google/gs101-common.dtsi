@@ -73,6 +73,7 @@
 	usb_host_device_timeout = <200>;
 	extcon = <&max77759tcpc>;
 
+	force_gen1;
 	u1u2_exitfail_quirk;
 	/* ux_exit_in_px should be defined in MK, LT */
 	ux_exit_in_px_quirk;
@@ -82,7 +83,7 @@
 
 	usbdrd_dwc3: dwc3 {
 		dr_mode = "peripheral";
-		maximum-speed = "super-speed-plus";
+		maximum-speed = "super-speed";
 		usb-psy-name = "usb";
 		snps,quirk-frame-length-adjustment = <0x20>;
 
