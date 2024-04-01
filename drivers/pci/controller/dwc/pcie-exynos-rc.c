@@ -2404,6 +2404,7 @@ void exynos_pcie_rc_register_dump(int ch_num)
 				exynos_phy_read(exynos_pcie, 0x760),
 				exynos_phy_read(exynos_pcie, 0x764));
 
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 	pr_err("[-------- Print additional PHY Register --------]\n");
 	/* internal state monitor */
 	for (i = 0x1E4; i < 0x220; i += 0x10) {
@@ -2468,7 +2469,6 @@ void exynos_pcie_rc_register_dump(int ch_num)
 
 	pr_err("\n");
 
-#if IS_ENABLED(CONFIG_SOC_ZUMA)
 	/* 100MHz source Reference clock (external pll) setting & internal state monitor */
 	for (i = 0xC700; i < 0xC720; i += 0x10) {
 		pr_err("UDBG 0x%04x:    0x%08x    0x%08x    0x%08x    0x%08x\n",
@@ -2489,6 +2489,57 @@ void exynos_pcie_rc_register_dump(int ch_num)
 				exynos_udbg_read(exynos_pcie, i + 0xC));
 	}
 #else
+	/* pll control signal/state monitor */
+	for (i=0x760; i<0x780; i += 0x10) {
+		pr_err("PHY 0x%04x:    0x%08x    0x%08x    0x%08x    0x%08x\n",
+				i,
+				exynos_phy_read(exynos_pcie, i + 0x0),
+				exynos_phy_read(exynos_pcie, i + 0x4),
+				exynos_phy_read(exynos_pcie, i + 0x8),
+				exynos_phy_read(exynos_pcie, i + 0xC));
+	}
+
+	/* pll control/retry setting check */
+	for (i=0x7E0; i<0x800; i += 0x10) {
+		pr_err("PHY 0x%04x:    0x%08x    0x%08x    0x%08x    0x%08x\n",
+				i,
+				exynos_phy_read(exynos_pcie, i + 0x0),
+				exynos_phy_read(exynos_pcie, i + 0x4),
+				exynos_phy_read(exynos_pcie, i + 0x8),
+				exynos_phy_read(exynos_pcie, i + 0xC));
+	}
+
+	/* OC configuration settings (override, monitor, code, control) */
+	for (i=0xA70; i<0xBD0; i += 0x10) {
+		pr_err("PHY 0x%04x:    0x%08x    0x%08x    0x%08x    0x%08x\n",
+				i,
+				exynos_phy_read(exynos_pcie, i + 0x0),
+				exynos_phy_read(exynos_pcie, i + 0x4),
+				exynos_phy_read(exynos_pcie, i + 0x8),
+				exynos_phy_read(exynos_pcie, i + 0xC));
+	}
+
+	/* OC and rate change state, override, monitor, control */
+	for (i=0xD90; i<0xDF0; i += 0x10) {
+		pr_err("PHY 0x%04x:    0x%08x    0x%08x    0x%08x    0x%08x\n",
+				i,
+				exynos_phy_read(exynos_pcie, i + 0x0),
+				exynos_phy_read(exynos_pcie, i + 0x4),
+				exynos_phy_read(exynos_pcie, i + 0x8),
+				exynos_phy_read(exynos_pcie, i + 0xC));
+	}
+
+	/* lane OC configuration check */
+	for (i=0xFB0; i<0xFC0; i += 0x10) {
+		pr_err("PHY 0x%04x:    0x%08x    0x%08x    0x%08x    0x%08x\n",
+				i,
+				exynos_phy_read(exynos_pcie, i + 0x0),
+				exynos_phy_read(exynos_pcie, i + 0x4),
+				exynos_phy_read(exynos_pcie, i + 0x8),
+				exynos_phy_read(exynos_pcie, i + 0xC));
+	}
+	pr_err("\n");
+
 	/* ---------------------- */
 	/* UDBG: 0xA000 ~ 0xAFFF */
 	/* ---------------------- */
@@ -3555,7 +3606,9 @@ int exynos_pcie_rc_poweron(int ch_num)
 	struct device *dev;
 	int ret;
 	unsigned long flags;
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 	u32 val;
+#endif
 
 	if (!exynos_pcie) {
 		pr_err("%s: ch#%d PCIe device is not loaded\n", __func__, ch_num);
@@ -3692,6 +3745,7 @@ int exynos_pcie_rc_poweron(int ch_num)
 		}
 	}
 
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 	if(exynos_pcie->ch_num == 0) {
 		/* PLL & BIAS always on
 		 * this is done to provide a more deterministic way to
@@ -3701,6 +3755,7 @@ int exynos_pcie_rc_poweron(int ch_num)
 		val = readl(exynos_pcie->phy_pcs_base + 0x150);
 		dev_dbg(dev, "pwron: pcs+0x150: %#x\n", val);
 	}
+#endif
 
 	dev_dbg(dev, "end poweron, state: %d\n", exynos_pcie->state);
 	logbuffer_log(exynos_pcie->log, "end poweron, state: %d\n", exynos_pcie->state);
@@ -4145,9 +4200,15 @@ static int exynos_pcie_rc_set_l1ss(int enable, struct pcie_port *pp, int id)
 				 */
 
 				/* 1. to enable PCIPM RC */
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 				/* [RC:set value] TPowerOn(200 usec) */
 				exynos_pcie_rc_wr_own_conf(pp, PCIE_LINK_L1SS_CONTROL2, 4,
 							   PORT_LINK_TPOWERON_200US);
+#else
+				/* [RC:set value] TPowerOn(130 usec) */
+				exynos_pcie_rc_wr_own_conf(pp, PCIE_LINK_L1SS_CONTROL2, 4,
+							   PORT_LINK_TPOWERON_130US);
+#endif
 
 				/* [RC:set value] TPowerOff(3 us), T_L1.2(10 us), T_PCLKACK(2 us) */
 				exynos_pcie_rc_wr_own_conf(pp, PCIE_L1_SUBSTATES_OFF, 4,
@@ -4171,9 +4232,15 @@ static int exynos_pcie_rc_set_l1ss(int enable, struct pcie_port *pp, int id)
 				dev_dbg(dev, "WIFIen:1RC:L1SS_CTRL(0x19C)=0x%x\n", val);
 
 				/* 2. to enable PCIPM EP */
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 				/* [EP:set value] TPowerOn(200 usec) */
 				exynos_pcie_rc_wr_other_conf(pp, ep_pci_bus, 0, WIFI_L1SS_CONTROL2,
 							     4, PORT_LINK_TPOWERON_200US);
+#else
+				/* [EP:set value] TPowerOn(130 usec) */
+				exynos_pcie_rc_wr_other_conf(pp, ep_pci_bus, 0, WIFI_L1SS_CONTROL2,
+							     4, PORT_LINK_TPOWERON_130US);
+#endif
 
 				/* [EP:set value] LTR Latency(max snoop(3 ms)/no-snoop(3 ms))
 				 * Reported_LTR value in LTR message
