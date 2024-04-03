@@ -3366,8 +3366,9 @@ static int exynos_pcie_rc_establish_link(struct pcie_port *pp)
 #endif
 retry:
 #if !IS_ENABLED(CONFIG_SOC_ZUMA)
-	logbuffer_logk(exynos_pcie->log, LOGLEVEL_ERR, "OC Initial Status check: 0x5FC(0x%x)\n",
-			exynos_phy_read(exynos_pcie, 0x5FC));
+	logbuffer_log(exynos_pcie->log,
+		      "OC Initial Status check: 0x5FC(0x%x)\n",
+		      exynos_phy_read(exynos_pcie, 0x5FC));
 
 	/* to call eyxnos_pcie_rc_pcie_phy_config() in cal.c file */
 	exynos_pcie_rc_assert_phy_reset(pp);
