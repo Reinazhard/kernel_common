@@ -21,6 +21,7 @@ KERNEL_VENDOR_CMDLINE+=" stack_depot_disable=off page_pinner=on"
 KERNEL_VENDOR_CMDLINE+=" swiotlb=noforce"
 KERNEL_VENDOR_CMDLINE+=" disable_dma32=on"
 KERNEL_VENDOR_CMDLINE+=" sysctl.kernel.sched_pelt_multiplier=4"
+KERNEL_VENDOR_CMDLINE+=" log_buf_len=1024K"
 VENDOR_BOOTCONFIG="androidboot.boot_devices=14700000.ufs"
 
 if [ -n "${GKI_BUILD_CONFIG_FRAGMENT}" ]; then
