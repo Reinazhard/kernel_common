@@ -955,6 +955,20 @@ static int dp_link_up(struct dp_device *dp)
 		}
 	}
 
+	/*
+	 * Sanity-check DP_DPCD_REV and DP_MAX_LINK_RATE values.
+	 *
+	 * Per DP CTS test 4.2.2.2, on future sinks, these values can be
+	 * higher than 0x14 (DPCD r1.4) and 0x1E (HBR3).
+	 *
+	 * If connected to such sink, adjust the max link rate to HBR3.
+	 */
+	if (dpcd[DP_DPCD_REV] > DP_DPCD_REV_14 && dpcd[DP_MAX_LINK_RATE] > DP_LINK_BW_8_1) {
+		dp_info(dp, "DP Sink: DPCD_%X MAX_LINK_RATE 0x%X, adjust max to HBR3\n",
+			dpcd[DP_DPCD_REV], dpcd[DP_MAX_LINK_RATE]);
+		dpcd[DP_MAX_LINK_RATE] = DP_LINK_BW_8_1;
+	}
+
 	/* Fill Sink Capabilities */
 	dp_fill_sink_caps(dp, dpcd);
 
@@ -962,6 +976,25 @@ static int dp_link_up(struct dp_device *dp)
 	dp_info(dp, "DP Sink: DPCD_%X Rate(%d Mbps) Lanes(%u) EF(%d) SSC(%d) FEC(%d) DSC(%d)\n",
 		dp->sink.revision, dp->sink.link_rate / 100, dp->sink.num_lanes,
 		dp->sink.enhanced_frame, dp->sink.ssc, dp->sink.fec, dp->sink.dsc);
+
+	/* Sanity-check the sink's max link rate */
+	if (dp->sink.link_rate != drm_dp_bw_code_to_link_rate(DP_LINK_BW_1_62) &&
+	    dp->sink.link_rate != drm_dp_bw_code_to_link_rate(DP_LINK_BW_2_7) &&
+	    dp->sink.link_rate != drm_dp_bw_code_to_link_rate(DP_LINK_BW_5_4) &&
+	    dp->sink.link_rate != drm_dp_bw_code_to_link_rate(DP_LINK_BW_8_1)) {
+		dp_err(dp, "DP Sink: invalid max link rate\n");
+		mutex_unlock(&dp->training_lock);
+		dp->stats.dpcd_read_failures++;
+		return -EINVAL;
+	}
+
+	/* Sanity-check the sink's max lane count */
+	if (dp->sink.num_lanes != 1 && dp->sink.num_lanes != 2 && dp->sink.num_lanes != 4) {
+		dp_err(dp, "DP Sink: invalid max lane count\n");
+		mutex_unlock(&dp->training_lock);
+		dp->stats.dpcd_read_failures++;
+		return -EINVAL;
+	}
 
 	/* Power DP Sink device Up */
 	dp_sink_power_up(dp, true);
@@ -989,22 +1022,31 @@ static int dp_link_up(struct dp_device *dp)
 
 		dp_info(dp, "DP Branch Device: DFP count = %d, sink count = %d\n",
 			dp->dfp_count, dp->sink_count);
-	} else {
-		dp->dfp_count = 0;
-		dp_info(dp, "DP Sink: sink count = %d\n", dp->sink_count);
-	}
 
-	if (dp->sink_count == 0) {
-		if (dp->dfp_count > 0) {
-			dp_info(dp, "DP Link: training defer: DP Branch Device, sink count = 0\n");
-			mutex_unlock(&dp->training_lock);
-			return 0;
-		} else {
-			dp_err(dp, "DP Sink: invalid sink count = 0\n");
+		/* Sanity-check the sink count */
+		if (dp->sink_count > dp->dfp_count) {
+			dp_err(dp, "DP Branch Device: invalid sink count\n");
 			mutex_unlock(&dp->training_lock);
 			dp->stats.sink_count_invalid_failures++;
 			return -EINVAL;
 		}
+	} else {
+		dp->dfp_count = 0;
+		dp_info(dp, "DP Sink: sink count = %d\n", dp->sink_count);
+
+		/* Sanity-check the sink count */
+		if (dp->sink_count != 1) {
+			dp_err(dp, "DP Sink: invalid sink count\n");
+			mutex_unlock(&dp->training_lock);
+			dp->stats.sink_count_invalid_failures++;
+			return -EINVAL;
+		}
+	}
+
+	if (dp->sink_count == 0) {
+		dp_info(dp, "DP Link: training defer: DP Branch Device, sink count = 0\n");
+		mutex_unlock(&dp->training_lock);
+		return 0;
 	}
 
 	/* Pick link parameters */
@@ -1743,7 +1785,7 @@ static int dp_downstream_port_event_handler(struct dp_device *dp, int new_sink_c
 }
 
 /* Works */
-static void dp_work_hpd(struct work_struct *work)
+static void dp_work_hpd(enum hotplug_state state)
 {
 	struct dp_device *dp = get_dp_drvdata();
 	struct drm_connector *connector = &dp->connector;
@@ -1754,7 +1796,9 @@ static void dp_work_hpd(struct work_struct *work)
 
 	mutex_lock(&dp->hpd_lock);
 
-	if (dp_get_hpd_state(dp) == EXYNOS_HPD_PLUG) {
+	if (state == EXYNOS_HPD_PLUG) {
+		dp_info(dp, "[HPD_PLUG start]\n");
+
 		if (mutex_trylock(&private->dp_tui_lock) == 0) {
 			/* TUI is active, bail out */
 			dp_info(dp, "unable to handle HPD_PLUG, TUI is active\n");
@@ -1762,12 +1806,13 @@ static void dp_work_hpd(struct work_struct *work)
 			return;
 		}
 
+		/* block suspend and increment power usage count */
+		pm_stay_awake(dp->dev);
 		pm_runtime_get_sync(dp->dev);
 		dp_debug(dp, "pm_rtm_get_sync usage_cnt(%d)\n",
 			 atomic_read(&dp->dev->power.usage_count));
-		dp_enable_dposc(dp);
-		pm_stay_awake(dp->dev);
 
+		dp_enable_dposc(dp);
 		dp->dp_hotplug_error_code = 0;
 
 		/* PHY power on */
@@ -1775,7 +1820,7 @@ static void dp_work_hpd(struct work_struct *work)
 		ret = dp_hw_init(&dp->hw_config); /* for AUX ch read/write. */
 		if (ret) {
 			dp_err(dp, "dp_hw_init() failed\n");
-			goto HPD_FAIL;
+			goto HPD_PLUG_FAIL;
 		}
 		usleep_range(10000, 11000);
 
@@ -1786,17 +1831,21 @@ static void dp_work_hpd(struct work_struct *work)
 			else
 				link_status = LINK_TRAINING_FAILURE_SINK;
 			dp_err(dp, "failed to DP Link Up\n");
-			goto HPD_FAIL;
+			goto HPD_PLUG_FAIL;
 		}
 
 		if (dp->sink_count > 0) {
 			dp_update_link_status(dp, LINK_TRAINING_SUCCESS);
 			dp_on_by_hpd_plug(dp);
 		}
-	} else if (dp_get_hpd_state(dp) == EXYNOS_HPD_UNPLUG) {
-		if ((!pm_runtime_get_if_in_use(dp->dev)) ||
-		    (dp->state == DP_STATE_INIT)) {
-			dp_info(dp, "%s: DP is not ON\n", __func__);
+
+		dp_info(dp, "[HPD_PLUG done]\n");
+
+	} else if (state == EXYNOS_HPD_UNPLUG) {
+		dp_info(dp, "[HPD_UNPLUG start]\n");
+
+		if (!pm_runtime_get_if_in_use(dp->dev)) {
+			dp_info(dp, "%s: DP is already powered off\n", __func__);
 			mutex_unlock(&dp->hpd_lock);
 			return;
 		}
@@ -1810,36 +1859,32 @@ static void dp_work_hpd(struct work_struct *work)
 		dp_hw_deinit(&dp->hw_config);
 		dp_disable_dposc(dp);
 
+		dp->state = DP_STATE_INIT;
+		dp_info(dp, "%s: DP State changed to INIT\n", __func__);
+
+		/* decrement power usage count and unblock suspend */
 		pm_runtime_put(dp->dev);
-		/* put runtime power obtained during HPD_PLUG */
-		pm_runtime_put_sync(dp->dev);
+		pm_runtime_put_sync(dp->dev);  /* obtained during HPD_PLUG */
 		dp_debug(dp, "pm_rtm_put_sync usage_cnt(%d)\n",
 			 atomic_read(&dp->dev->power.usage_count));
 		pm_relax(dp->dev);
 
-		dp->state = DP_STATE_INIT;
-		dp_info(dp, "%s: DP State changed to INIT\n", __func__);
-
 		mutex_unlock(&private->dp_tui_lock);
+
+		dp_info(dp, "[HPD_UNPLUG done]\n");
 	}
 
 	mutex_unlock(&dp->hpd_lock);
 
 	return;
 
-HPD_FAIL:
-	dp_err(dp, "HPD FAIL Check CCIC or USB!!\n");
+HPD_PLUG_FAIL:
+	dp_err(dp, "[HPD_PLUG fail] Check CCIC or USB!!\n");
 	dp_set_hpd_state(dp, EXYNOS_HPD_UNPLUG);
-	dp_info(dp, "DP HPD changed to EXYNOS_HPD_UNPLUG\n");
 	hdcp_dplink_connect_state(DP_DISCONNECT);
 	dp_hw_deinit(&dp->hw_config);
 	dp_disable_dposc(dp);
-	pm_relax(dp->dev);
-
 	dp_init_info(dp);
-	pm_runtime_put_sync(dp->dev);
-	dp_debug(dp, "pm_rtm_put_sync usage_cnt(%d)\n",
-		 atomic_read(&dp->dev->power.usage_count));
 
 	/* in error case, add delay to avoid very short interval reconnection */
 	msleep(300);
@@ -1849,12 +1894,29 @@ HPD_FAIL:
 
 	// TODO: We need to define more error codes, but for now use just 1 for generic error code
 	dp->dp_hotplug_error_code = 1;
-	dp_info(dp, "HPD_FAIL, call drm_kms_helper_hotplug_event(dp_hotplug_error_code=%d)\n",
+	dp_info(dp, "[HPD_PLUG fail] call drm_kms_helper_hotplug_event(dp_hotplug_error_code=%d)\n",
 		dp->dp_hotplug_error_code);
 	drm_kms_helper_hotplug_event(dp->connector.dev);
 
+	/* decrement power usage count and unblock suspend */
+	pm_runtime_put_sync(dp->dev);
+	dp_debug(dp, "pm_rtm_put_sync usage_cnt(%d)\n",
+		 atomic_read(&dp->dev->power.usage_count));
+	pm_relax(dp->dev);
+
 	mutex_unlock(&private->dp_tui_lock);
+	dp_info(dp, "[HPD_PLUG done]\n");
 	mutex_unlock(&dp->hpd_lock);
+}
+
+static void dp_work_hpd_plug(struct work_struct *work)
+{
+	dp_work_hpd(EXYNOS_HPD_PLUG);
+}
+
+static void dp_work_hpd_unplug(struct work_struct *work)
+{
+	dp_work_hpd(EXYNOS_HPD_UNPLUG);
 }
 
 static u8 sysfs_triggered_irq = 0;
@@ -1866,12 +1928,14 @@ static void dp_work_hpd_irq(struct work_struct *work)
 	u8 irq = 0, irq2 = 0, irq3 = 0;
 	u8 link_status[DP_LINK_STATUS_SIZE];
 
+	mutex_lock(&dp->hpd_lock);
+	dp_info(dp, "[HPD_IRQ start]\n");
+
 	if (!pm_runtime_get_if_in_use(dp->dev)) {
 		dp_debug(dp, "[HPD IRQ] IRQ work skipped as power is off\n");
+		mutex_unlock(&dp->hpd_lock);
 		return;
 	}
-
-	mutex_lock(&dp->hpd_lock);
 
 	if (sysfs_triggered_irq != 0) {
 		irq = sysfs_triggered_irq;
@@ -1928,6 +1992,12 @@ static void dp_work_hpd_irq(struct work_struct *work)
 	}
 
 	if (dp->dfp_count > 0) {
+		/* Sanity-check the sink count */
+		if (sink_count > dp->dfp_count) {
+			dp_err(dp, "[HPD IRQ] invalid sink count, adjusting to 0\n");
+			sink_count = 0;
+		}
+
 		if ((link_status[2] & DP_DOWNSTREAM_PORT_STATUS_CHANGED) ||
 		    (dp->sink_count != sink_count)) {
 			dp_info(dp, "[HPD IRQ] DP downstream port status change\n");
@@ -1961,8 +2031,9 @@ process_irq:
 		dp_info(dp, "[HPD IRQ] unknown IRQ (0x%X)\n", irq);
 
 release_irq_resource:
-	mutex_unlock(&dp->hpd_lock);
 	pm_runtime_put(dp->dev);
+	dp_info(dp, "[HPD_IRQ done]\n");
+	mutex_unlock(&dp->hpd_lock);
 }
 
 /* Type-C Handshaking Functions */
@@ -1973,9 +2044,14 @@ static void dp_hpd_changed(struct dp_device *dp, enum hotplug_state state)
 		return;
 	}
 
-	if ((state == EXYNOS_HPD_PLUG) || (state == EXYNOS_HPD_UNPLUG)) {
+	if (state == EXYNOS_HPD_PLUG) {
 		dp_set_hpd_state(dp, state);
-		queue_work(dp->dp_wq, &dp->hpd_work);
+		if (!queue_work(dp->dp_wq, &dp->hpd_plug_work))
+			dp_warn(dp, "DP HPD PLUG work was already queued");
+	} else if (state == EXYNOS_HPD_UNPLUG) {
+		dp_set_hpd_state(dp, state);
+		if (!queue_work(dp->dp_wq, &dp->hpd_unplug_work))
+			dp_warn(dp, "DP HPD UNPLUG work was already queued");
 	} else
 		dp_err(dp, "DP HPD changed to abnormal state(%d)\n", state);
 }
@@ -2049,7 +2125,8 @@ static int usb_typec_dp_notification_locked(struct dp_device *dp, enum hotplug_s
 	} else if (hpd == EXYNOS_HPD_IRQ) {
 		if (dp_get_hpd_state(dp) == EXYNOS_HPD_PLUG) {
 			dp_info(dp, "%s: Service IRQ from sink\n", __func__);
-			queue_work(dp->dp_wq, &dp->hpd_irq_work);
+			if (!queue_work(dp->dp_wq, &dp->hpd_irq_work))
+				dp_warn(dp, "DP HPD IRQ work was already queued");
 		}
 	} else {
 		dp_info(dp, "%s: USB Type-C is HPD UNPLUG status, or not in display ALT mode\n",
@@ -2968,7 +3045,8 @@ static int dp_probe(struct platform_device *pdev)
 		goto err;
 	}
 
-	INIT_WORK(&dp->hpd_work, dp_work_hpd);
+	INIT_WORK(&dp->hpd_plug_work, dp_work_hpd_plug);
+	INIT_WORK(&dp->hpd_unplug_work, dp_work_hpd_unplug);
 	INIT_WORK(&dp->hpd_irq_work, dp_work_hpd_irq);
 
 	pm_runtime_enable(dev);
@@ -3024,5 +3102,6 @@ struct platform_driver dp_driver
 		      } };
 
 MODULE_AUTHOR("YongWook Shin <yongwook.shin@samsung.com>");
-MODULE_DESCRIPTION("Samusung DisplayPort driver");
+MODULE_AUTHOR("Petri Gynther <pgynther@google.com>");
+MODULE_DESCRIPTION("Samsung SoC DisplayPort driver");
 MODULE_LICENSE("GPL");
