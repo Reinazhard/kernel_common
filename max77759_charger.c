@@ -175,7 +175,7 @@ static int max77759_resume_check(struct max77759_chgr_data *data)
 	return ret;
 }
 
-#if IS_ENABLED(CONFIG_GOOGLE_BCL)
+#if IS_ENABLED(CONFIG_GOOGLE_BCL_LEGACY)
 static int max77759_chg_prot(struct regmap *regmap, bool enable);
 
 static int max77759_get_vdroop_ok(struct i2c_client *client, bool *state)
@@ -343,7 +343,7 @@ static const struct bcl_ifpmic_ops bcl_ifpmic_ops = {
 	max77759_set_batoilo_lvl,
 	max77759_get_batoilo_lvl,
 };
-#endif /* CONFIG_GOOGLE_BCL */
+#endif /* CONFIG_GOOGLE_BCL_LEGACY */
 
 /* ----------------------------------------------------------------------- */
 
@@ -3046,7 +3046,7 @@ static irqreturn_t max77759_chgr_irq(int irq, void *client)
 		}
 	}
 
-#if IS_ENABLED(CONFIG_GOOGLE_BCL)
+#if IS_ENABLED(CONFIG_GOOGLE_BCL_LEGACY)
 	/* TODO: make this an interrupt controller */
 	if (chg_int[1] & MAX77759_CHG_INT2_SYS_UVLO1_I) {
 		pr_debug("%s: SYS_UVLO1\n", __func__);
@@ -3227,7 +3227,7 @@ static int max77759_setup_votables(struct max77759_chgr_data *data)
 	return 0;
 }
 
-#if IS_ENABLED(CONFIG_GOOGLE_BCL)
+#if IS_ENABLED(CONFIG_GOOGLE_BCL_LEGACY)
 static void max77759_register_bcl(struct work_struct *work)
 {
 	struct max77759_chgr_data *data = container_of(work, struct max77759_chgr_data,
@@ -3342,7 +3342,7 @@ static int max77759_charger_probe(struct i2c_client *client,
 	atomic_set(&data->early_topoff_cnt, 0);
 	i2c_set_clientdata(client, data);
 
-#if IS_ENABLED(CONFIG_GOOGLE_BCL)
+#if IS_ENABLED(CONFIG_GOOGLE_BCL_LEGACY)
 	/*
 	 * NOTE: this should possibly be retried later. Startip seems to be
 	 * a little "racey".

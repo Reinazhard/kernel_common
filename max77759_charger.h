@@ -7,7 +7,7 @@
 #ifndef MAX77759_CHARGER_H_
 #define MAX77759_CHARGER_H_
 
-#if IS_ENABLED(CONFIG_GOOGLE_BCL)
+#if IS_ENABLED(CONFIG_GOOGLE_BCL_LEGACY)
 #include <soc/google/bcl.h>
 #endif
 
@@ -87,7 +87,7 @@ struct max77759_chgr_data {
 	struct gvotable_election *aicl_active_el;
 
 	/* thermal BCL */
-#if IS_ENABLED(CONFIG_GOOGLE_BCL)
+#if IS_ENABLED(CONFIG_GOOGLE_BCL_LEGACY)
 	struct bcl_device *bcl_dev;
 	struct delayed_work init_bcl;
 #endif
