@@ -363,12 +363,8 @@ static int max77759_get_and_clr_bcl_irq(struct i2c_client *client, u8 *irq_val)
 
 	if (chg_int & MAX77759_CHG_INT2_SYS_UVLO2_I)
 		*irq_val = UVLO2;
-	else if (chg_int & MAX77759_CHG_INT2_BAT_OILO_I)
-		*irq_val = BATOILO;
-	else if (chg_int & MAX77759_CHG_INT2_SYS_UVLO1_I)
-		*irq_val = UVLO1;
 	else
-		*irq_val = 0;
+		*irq_val = BATOILO;
 
 	ret = max77759_reg_write(data->regmap, MAX77759_CHG_INT2, chg_int);
 	if (ret < 0)
