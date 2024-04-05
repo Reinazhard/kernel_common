@@ -13,8 +13,8 @@ ccflags-y += -I $(srctree)/drivers/ufs
 obj-$(CONFIG_SCSI_UFS_PIXEL_FIPS140) += ufs-pixel-fips140.o
 ufs-pixel-fips140-y += ufs-pixel-fips_sha256.o ufs-pixel-fips140-refs.o
 ufs-pixel-fips140-$(CONFIG_SOC_GS101) += gs101/ufs-pixel-fips.o
-ufs-pixel-fips140-$(CONFIG_SOC_GS201) += gs201/ufs-pixel-fips.o
-ufs-pixel-fips140-$(CONFIG_SOC_ZUMA) += gs201/ufs-pixel-fips.o
+ufs-pixel-fips140-$(CONFIG_SOC_GS201) += zuma/ufs-pixel-fips.o
+ufs-pixel-fips140-$(CONFIG_SOC_ZUMA) += zuma/ufs-pixel-fips.o
 
 # Use -DBUILD_FIPS140_KO to disable dynamic code patching as that would
 # invalidate the hash of the module's .text section

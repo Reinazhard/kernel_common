@@ -5,6 +5,8 @@
 #define A_FEW_USECS 10		/* see Documentation/timers/timers-howto.rst */
 #if defined(CONFIG_SOC_ZUMA)
 #define PMU_ALIVE_BASE_ADDR	0x15460000
+#elif defined(CONFIG_SOC_GS201)
+#define PMU_ALIVE_BASE_ADDR	0x18060000
 #else
 #define PMU_ALIVE_BASE_ADDR	0x17460000
 #endif
