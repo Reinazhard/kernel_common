@@ -295,7 +295,7 @@ lto_dependant_kernel_module(
         "drivers/media/platform/exynos/smfc/smfc.ko",
         "drivers/mfd/s2mpg10-mfd.ko",
         "drivers/mfd/s2mpg11-mfd.ko",
-        "drivers/mfd/s2mpg1x-gpio.ko",
+        "drivers/mfd/s2mpg1x-gpio-gs101.ko",
         "drivers/mfd/slg51000-core.ko",
         "drivers/misc/gsc-spi.ko",
         "drivers/misc/s5910/s5910.ko",
