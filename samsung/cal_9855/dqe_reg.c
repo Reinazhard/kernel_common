@@ -17,6 +17,8 @@
 #include "regs-dqe.h"
 #include "../cal_9845/regs-dqe.h"
 
+struct cal_regs_dqe regs_dqe_cgc[REGS_DQE_ID_MAX];
+
 void dqe_reg_set_rcd_en_internal(u32 dqe_id, bool en)
 {
 	dqe_write(dqe_id, DQE_RCD, DQE_RCD_EN(en ? 1 : 0));
@@ -60,4 +62,14 @@ void dqe_reg_set_histogram_pos_internal(u32 dqe_id, enum exynos_histogram_id his
 
 	pr_debug("%s: pos(%d)\n", __func__, pos);
 	hist_write_mask(dqe_id, DQE_HIST, HIST_POS_SEL(pos), HIST_POS_SEL_MASK);
+}
+
+void
+dqe_cgc_regs_desc_init(void __iomem *regs, phys_addr_t start, const char *name,
+		   enum dqe_version ver, unsigned int dqe_id)
+{
+	regs_dqe_cgc[dqe_id].version = ver;
+	regs_dqe_cgc[dqe_id].desc.regs = regs;
+	regs_dqe_cgc[dqe_id].desc.name = name;
+	regs_dqe_cgc[dqe_id].desc.start = start;
 }
