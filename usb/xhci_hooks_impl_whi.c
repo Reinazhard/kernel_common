@@ -503,14 +503,10 @@ static int usb_audio_offload_init(struct xhci_hcd *xhci)
 	struct device *dev = xhci_to_hcd(xhci)->self.sysdev;
 	struct xhci_vendor_data *vendor_data;
 	int ret;
-	u32 out_val;
 
 	vendor_data = kzalloc(sizeof(struct xhci_vendor_data), GFP_KERNEL);
 	if (!vendor_data)
 		return -ENOMEM;
-
-	if (!of_property_read_u32(dev->of_node, "offload", &out_val))
-		vendor_data->usb_audio_offload = (out_val == 1) ? true : false;
 
 	ret = xhci_vendor_init_irq_workqueue(vendor_data);
 	if (ret) {
@@ -524,6 +520,11 @@ static int usb_audio_offload_init(struct xhci_hcd *xhci)
 		kfree(vendor_data);
 		return ret;
 	}
+
+	vendor_data->usb_audio_offload =
+		of_property_read_bool(dev->of_node, "offload") ? true : false;
+	if (!vendor_data->usb_audio_offload)
+		dev_warn(dev, "USB offload is not supported\n");
 
 	vendor_data->dt_direct_usb_access =
 		of_property_read_bool(dev->of_node, "direct-usb-access") ? true : false;
