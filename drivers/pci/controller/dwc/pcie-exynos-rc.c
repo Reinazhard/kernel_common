@@ -1791,7 +1791,9 @@ static void exynos_pcie_rc_set_iocc(struct pcie_port *pp, int enable)
 		exynos_sysreg_write(exynos_pcie, val, sysreg_sharability);
 	}
 
-	//pcie_sysmmu_set_use_iocc(pcie_ch_to_hsi(exynos_pcie->ch_num));
+#if IS_ENABLED(CONFIG_EXYNOS_PCIE_IOMMU)
+	pcie_sysmmu_set_use_iocc(pcie_ch_to_hsi(exynos_pcie->ch_num));
+#endif
 
 	exynos_pcie_rc_rd_own_conf(pp, PCIE_COHERENCY_CONTROL_3_OFF, 4, &val);
 	dev_dbg(pci->dev, "PCIe Axcache[1] = 0x%x\n", val);
