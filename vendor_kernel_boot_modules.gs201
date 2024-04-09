@@ -109,7 +109,6 @@ max77779_pmic.ko
 max77779_pmic_irq.ko
 max77779_pmic_pinctrl.ko
 max77779_pmic_sgpio.ko
-max77826-gs-regulator.ko
 memlat-devfreq.ko
 odpm_legacy.ko
 open-dice.ko
