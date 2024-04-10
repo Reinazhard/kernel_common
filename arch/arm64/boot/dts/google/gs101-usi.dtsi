@@ -346,8 +346,9 @@
 		samsung,scl-clk-stretching;
 		samsung,usi-i2c-v2;
 		interrupts = <GIC_SPI IRQ_USI12_USI_PERIC1 ITLH>;
-		pinctrl-names = "default";
+		pinctrl-names = "default", "recovery";
 		pinctrl-0 = <&hsi2c12_bus>;
+		pinctrl-1 = <>;
 		clocks = <&clock VDOUT_CLK_PERIC1_USI12_USI>, <&clock GATE_PERIC1_TOP0_USI12_USI>;
 		clock-names = "ipclk_hsi2c", "gate_hsi2c_clk";
 		gpio_scl= <&gpp23 4 0x1>;
