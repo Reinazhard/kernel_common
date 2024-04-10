@@ -210,7 +210,7 @@ static void lane0_reset(struct exynos_usbphy_info *info, int val)
 	base = info->regs_base;
 	reg = readl(base + SNPS_USBDPPHY_REG_PHY_RST_CTRL);
 	((SNPS_USBDPPHY_REG_PHY_RST_CTRL_p)(&reg))->b.pipe_lane0_reset_n = (val) ? 0x0 : 0x1;
-	((SNPS_USBDPPHY_REG_PHY_RST_CTRL_p)(&reg))->b.pipe_lane0_reset_n_ovrd_en = 1;
+	((SNPS_USBDPPHY_REG_PHY_RST_CTRL_p)(&reg))->b.pipe_lane0_reset_n_ovrd_en = val;
 	writel(reg, base + SNPS_USBDPPHY_REG_PHY_RST_CTRL);
 }
 
@@ -811,6 +811,11 @@ static int additional_cr_reg_update(struct exynos_usbphy_info *info)
 		pr_info("Fail usbdp phy init(Not check cal done)\n");
 		return -1;
 	}
+
+	/* LFPS threshold control */
+	cr_reg = phy_exynos_snps_usbdp_cr_read(info, CRREG_LANE_RX(0x10f0));
+	cr_reg &= ~(1 << 3);
+	phy_exynos_snps_usbdp_cr_write(info, CRREG_LANE_RX(0x10f0), cr_reg);
 
 	cr_reg = phy_exynos_snps_usbdp_cr_read(info, 0x003D);
 	pr_debug("PMA version:%#04x\n", cr_reg);
