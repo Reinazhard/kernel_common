@@ -1,7 +1,6 @@
 # List of modules loaded during first stage init from vendor_boot
 # Sort order defined by
 # LC_ALL=C sort
-abrolhos.ko
 acpm_flexpmu_dbg.ko
 acpm_mbox_test.ko
 aoc_alsa_dev.ko
