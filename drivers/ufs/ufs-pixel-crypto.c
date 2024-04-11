@@ -452,7 +452,7 @@ void pixel_ufs_crypto_resume(struct ufs_hba *hba)
 			ret);
 }
 
-#if !IS_ENABLED(CONFIG_SCSI_UFS_PIXEL_FIPS140)
+#if !IS_ENABLED(CONFIG_SCSI_UFS_PIXEL_FIPS140) || IS_ENABLED(CONFIG_SOC_GS101)
 /* Configure inline encryption (or decryption) on requests that require it. */
 static void pixel_ufs_crypto_fill_prdt(void *unused, struct ufs_hba *hba,
 				       struct ufshcd_lrb *lrbp,
