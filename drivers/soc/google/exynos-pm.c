@@ -22,7 +22,11 @@
 #define WS_BIT_MAILBOX_AOC2AP		(7)
 #define WS2_BIT_MAILBOX_AOCA322AP	(5)
 #define WS2_BIT_MAILBOX_AOCF12AP	(6)
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 #define WS2_BIT_VGPIO2PMU_EINT		(18)
+#else
+#define WS2_BIT_VGPIO2PMU_EINT		(13)
+#endif
 
 static struct exynos_pm_info *pm_info;
 static struct exynos_pm_dbg *pm_dbg;
