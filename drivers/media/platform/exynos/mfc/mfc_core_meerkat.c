@@ -1187,7 +1187,6 @@ static void __mfc_dump_info_and_stop_hw(struct mfc_core *core)
 	struct mfc_core *main_core;
 	struct mfc_ctx *ctx;
 	int curr_ctx = __mfc_get_curr_ctx(core);
-	bool itmon_notified = core->itmon_notified;
 
 	MFC_TRACE_CORE("** %s will stop!!!\n", core->name);
 
@@ -1219,10 +1218,8 @@ static void __mfc_dump_info_and_stop_hw(struct mfc_core *core)
 #endif
 	}
 
-
 panic:
-	if (!itmon_notified)
-		dbg_snapshot_emergency_reboot("MFC H/W issue\n");
+	dbg_snapshot_emergency_reboot("MFC H/W issue\n");
 }
 
 static void __mfc_dump_info_and_stop_hw_debug(struct mfc_core *core)
