@@ -33,8 +33,9 @@ config MEMLAT_DEVFREQ
 	  This adds the DEVFREQ driver for memory latency goverors.
 
 config MEMLAT_DEVFREQ_DSU
-	  depends on MEMLAT_DEVFREQ
-	  default y if SOC_ZUMA
+	tristate "HW monitor based DEVFREQ driver for DSU"
+	depends on MEMLAT_DEVFREQ
+	default y if SOC_ZUMA
 
 config ARM_EXYNOS_DEVFREQ
 	tristate "ARM EXYNOS DEVFREQ Common driver"
