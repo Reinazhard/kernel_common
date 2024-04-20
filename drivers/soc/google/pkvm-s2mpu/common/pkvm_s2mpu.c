@@ -310,9 +310,9 @@ static int s2mpu_driver_register(struct platform_driver *driver)
 		pr_err("Failed to set S2MPU PM OPS\n");
 		return ret;
 	}
-
 	/* No need to force probe devices if pKVM is not enabled. */
-	return platform_driver_register(driver);
+	if (!is_protected_kvm_enabled())
+		return platform_driver_register(driver);
 
 	/* Only try to register the driver with pKVM if pKVM is enabled. */
 	ret = pkvm_load_el2_module(__kvm_nvhe_s2mpu_hyp_init, &token);
