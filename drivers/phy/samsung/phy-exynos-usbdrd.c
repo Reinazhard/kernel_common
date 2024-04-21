@@ -2143,15 +2143,15 @@ static int exynos_usbdrd_phy_probe(struct platform_device *pdev)
 	u32 pmu_mask, pmu_mask_tcxo, pmu_mask_pll;
 	int i, ret;
 
+	if (!exynos_pd_hsi0_get_ldo_status()) {
+		dev_err(dev, "pd-hsi0 is not powered, deferred probe!");
+		return -EPROBE_DEFER;
+	}
+
 	s2mpu_np = of_parse_phandle(dev->of_node, "s2mpus", 0);
 	if (s2mpu_np) {
 		s2mpu_pdev = of_find_device_by_node(s2mpu_np);
 		of_node_put(s2mpu_np);
-	}
-
-	if (!exynos_pd_hsi0_get_ldo_status()) {
-		dev_err(dev, "pd-hsi0 is not powered, deferred probe!");
-		return -EPROBE_DEFER;
 	}
 
 	pr_info("%s: +++ %s %s\n", __func__, dev->init_name, pdev->name);
