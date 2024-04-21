@@ -45,7 +45,11 @@ unsigned int core_balance;
 unsigned int sbwc_disable;
 unsigned int sscd_report;
 unsigned int hdr_dump;
+#if IS_ENABLED(CONFIG_SOC_ZUMA)
 unsigned int idle_suspend_enable = 1;
+#else
+unsigned int idle_suspend_enable = 0;
+#endif
 
 static int __mfc_info_show(struct seq_file *s, void *unused)
 {
