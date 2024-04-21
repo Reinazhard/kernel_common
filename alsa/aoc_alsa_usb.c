@@ -24,8 +24,6 @@ struct uaudio_dev {
 
 static struct uaudio_dev uadev[SNDRV_CARDS];
 
-void (*cb_func)(struct usb_device*, struct usb_host_endpoint*);
-
 static bool snd_usb_is_implicit_feedback(struct snd_usb_endpoint *ep)
 {
 	return  ep->implicit_fb_sync && usb_pipeout(ep->pipe);
@@ -147,21 +145,12 @@ int aoc_set_usb_mem_config(struct aoc_chip *achip)
 			return -ENODEV;
 		}
 
-		if (cb_func) {
-			cb_func(subs->dev, ep);
-		} else {
-			pr_info("%s call aoc_alsa_usb_callback_register() first, skip", __func__);
-		}
-
 		if (subs->sync_endpoint && !implicit_fb) {
 			fb_ep = usb_pipe_endpoint(subs->dev, subs->sync_endpoint->pipe);
 			if (!fb_ep) {
 				pr_info("%s sync ep # %d context is null\n",
 						__func__, subs->sync_endpoint->ep_num);
 			} else {
-				if (cb_func) {
-					cb_func(subs->dev, fb_ep);
-				}
 				aoc_set_usb_feedback_endpoint(achip, subs->dev, fb_ep);
 			}
 		}
@@ -172,29 +161,6 @@ int aoc_set_usb_mem_config(struct aoc_chip *achip)
 	aoc_set_usb_offload_state(achip, true);
 	return 0;
 }
-
-bool aoc_alsa_usb_callback_register(
-			void (*callback)(struct usb_device*, struct usb_host_endpoint*))
-{
-	pr_info("%s usb callback register", __func__);
-	if (callback) {
-		cb_func = callback;
-	} else {
-		pr_err("%s: cb_func register fail", __func__);
-		return false;
-	}
-	return true;
-}
-EXPORT_SYMBOL_GPL(aoc_alsa_usb_callback_register);
-
-void aoc_alsa_usb_callback_unregister(void)
-{
-	pr_info("%s usb callback unregister", __func__);
-	if (cb_func) {
-		cb_func = NULL;
-	}
-}
-EXPORT_SYMBOL_GPL(aoc_alsa_usb_callback_unregister);
 
 static void audio_usb_offload_connect(void *unused, struct usb_interface *intf,
 			struct snd_usb_audio *chip)

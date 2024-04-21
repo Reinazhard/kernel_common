@@ -22,8 +22,7 @@ enum aoc_usb_msg {
 	GET_ISOC_TR_INFO,
 	SET_ISOC_TR_INFO,
 	SYNC_CONN_STAT,
-	SET_OFFLOAD_STATE,
-	SEND_FB_EP_INFO
+	SET_OFFLOAD_STATE
 };
 
 enum aoc_usb_state {
@@ -61,6 +60,7 @@ struct xhci_vendor_data {
 	enum usb_offload_op_mode op_mode;
 
 	struct workqueue_struct *irq_wq;
+	struct work_struct offload_connect_ws;
 	struct work_struct xhci_vendor_irq_work;
 };
 
@@ -114,7 +114,6 @@ struct feedback_ep_info_args {
 
 int xhci_vendor_helper_init(void);
 int usb_vendor_helper_init(void);
-int snd_usb_audio_vendor_helper_init(void);
 
 extern int xhci_handle_event(struct xhci_hcd *xhci);
 extern void xhci_update_erst_dequeue(struct xhci_hcd *xhci,

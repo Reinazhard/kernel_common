@@ -16,6 +16,8 @@
 #include <linux/workqueue.h>
 #include <linux/usb/hcd.h>
 
+#include <trace/hooks/audio_usboffload.h>
+
 #include "xhci.h"
 #include "xhci-plat.h"
 #include "aoc_usb.h"
@@ -37,21 +39,6 @@ int unregister_aoc_usb_notifier(struct notifier_block *nb)
 	return blocking_notifier_chain_unregister(&aoc_usb_notifier_list, nb);
 }
 
-int xhci_send_feedback_ep_info(struct xhci_hcd *xhci, struct feedback_ep_info_args *cmd_args)
-{
-	if (!xhci || !cmd_args)
-		return -EINVAL;
-
-	xhci_dbg(xhci, "Send feedback EP info, Num = %u, Max packet size = %u, bInterval = %u, bRefresh = %u",
-		 cmd_args->ep_num, cmd_args->max_packet,
-		 cmd_args->binterval, cmd_args->brefresh);
-
-	blocking_notifier_call_chain(&aoc_usb_notifier_list, SEND_FB_EP_INFO,
-				     cmd_args);
-
-	return 0;
-}
-
 /*
  * If the Host connected to a hub, user may connect more than two USB audio
  * headsets or DACs. A caller can call this function to know how many USB
@@ -67,27 +54,6 @@ int xhci_get_usb_audio_count(struct xhci_hcd *xhci)
 	vendor_data = xhci_to_priv(xhci)->vendor_data;
 
 	return vendor_data->usb_audio_count;
-}
-
-int xhci_set_offload_state(struct xhci_hcd *xhci, bool enabled)
-{
-	struct xhci_vendor_data *vendor_data;
-
-	if (!xhci)
-		return -EINVAL;
-
-	vendor_data = xhci_to_priv(xhci)->vendor_data;
-
-	if (!vendor_data->dt_direct_usb_access)
-		return -EPERM;
-
-	xhci_info(xhci, "Set offloading state %s\n", enabled ? "true" : "false");
-
-	blocking_notifier_call_chain(&aoc_usb_notifier_list, SET_OFFLOAD_STATE,
-				     &enabled);
-	vendor_data->offload_state = enabled;
-
-	return 0;
 }
 
 static int xhci_sync_dev_ctx(struct xhci_hcd *xhci, unsigned int slot_id)
@@ -142,6 +108,13 @@ static int xhci_sync_dev_ctx(struct xhci_hcd *xhci, unsigned int slot_id)
 					ep_ctx->deq, ep_ctx->tx_info));
 
 	kfree(dev_ctx);
+	return 0;
+}
+
+static int notify_offload_state(bool enabled)
+{
+	blocking_notifier_call_chain(&aoc_usb_notifier_list, SET_OFFLOAD_STATE, 
+				     &enabled);
 	return 0;
 }
 
@@ -220,6 +193,60 @@ static int xhci_set_isoc_tr_info(u16 ep_id, u16 dir, struct xhci_ring *ep_ring)
 				     &tr_info);
 
 	return 0;
+}
+
+static void offload_connect_work(struct work_struct *work)
+{
+	struct xhci_vendor_data *vendor_data =
+		container_of(work, struct xhci_vendor_data, offload_connect_ws);
+	struct xhci_hcd *xhci = vendor_data->xhci;
+
+	xhci_info(xhci, "Set offloading state %s\n",
+		  vendor_data->offload_state ? "true" : "false");
+	notify_offload_state(vendor_data->offload_state);
+}
+
+static void usb_audio_vendor_connect(void *unused, struct usb_interface *intf,
+				     struct snd_usb_audio *chip)
+{
+	struct usb_device *udev;
+	struct xhci_hcd *xhci;
+	struct xhci_vendor_data *vendor_data;
+
+	if (!intf) {
+		pr_err("%s: Invalid parameter\n", __func__);
+		return;
+	}
+
+	udev = interface_to_usbdev(intf);
+	xhci = get_xhci_hcd_by_udev(udev);
+	vendor_data = xhci_to_priv(xhci)->vendor_data;
+
+	if (vendor_data) {
+		vendor_data->offload_state = true;
+		schedule_work(&vendor_data->offload_connect_ws);
+	}
+}
+
+static void usb_audio_vendor_disconnect(void *unused, struct usb_interface *intf)
+{
+	struct usb_device *udev;
+	struct xhci_hcd *xhci;
+	struct xhci_vendor_data *vendor_data;
+
+	if (!intf) {
+		pr_err("%s: Invalid parameter\n", __func__);
+		return;
+	}
+
+	udev = interface_to_usbdev(intf);
+	xhci = get_xhci_hcd_by_udev(udev);
+	vendor_data = xhci_to_priv(xhci)->vendor_data;
+
+	if (vendor_data) {
+		vendor_data->offload_state = false;
+		schedule_work(&vendor_data->offload_connect_ws);
+	}
 }
 
 /*
@@ -537,6 +564,7 @@ static int usb_audio_offload_init(struct xhci_hcd *xhci)
 	usb_register_notify(&xhci_udev_nb);
 	vendor_data->op_mode = USB_OFFLOAD_DRAM;
 	vendor_data->xhci = xhci;
+	INIT_WORK(&vendor_data->offload_connect_ws, offload_connect_work);
 
 	xhci_to_priv(xhci)->vendor_data = vendor_data;
 
@@ -559,6 +587,7 @@ static void usb_audio_offload_cleanup(struct xhci_hcd *xhci)
 	/* Notification for xhci driver removing */
 	usb_host_mode_state_notify(USB_DISCONNECTED);
 
+	cancel_work_sync(&vendor_data->offload_connect_ws);
 	kfree(vendor_data);
 	xhci_to_priv(xhci)->vendor_data = NULL;
 }
@@ -865,5 +894,16 @@ static struct xhci_vendor_ops ops = {
 
 int xhci_vendor_helper_init(void)
 {
+	int ret;
+
+	ret = register_trace_android_vh_audio_usb_offload_connect(usb_audio_vendor_connect, NULL);
+	if (ret)
+		pr_err("register_trace_android_vh_audio_usb_offload_connect failed: %d\n", ret);
+
+	ret = register_trace_android_rvh_audio_usb_offload_disconnect(usb_audio_vendor_disconnect,
+								      NULL);
+	if (ret)
+		pr_err("register_trace_android_rvh_audio_usb_offload_disconnect failed: %d\n", ret);
+
 	return xhci_exynos_register_vendor_ops(&ops);
 }
