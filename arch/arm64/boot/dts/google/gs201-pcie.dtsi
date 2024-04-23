@@ -130,6 +130,6 @@
 		pcie-vid-num = <1>;
 		#iommu-cells = <0>;
 		use-map-once = "false";
-		status = "okay";
+		status = "disabled";
 	};
 };

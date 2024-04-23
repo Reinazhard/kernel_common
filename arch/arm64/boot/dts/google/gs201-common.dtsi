@@ -372,7 +372,6 @@
 	use-sicd = "true";
 	use-ia = "true";
 	use-l1ss = "true";
-	use-sysmmu = "true";
 	max-link-speed = <LINK_SPEED_GEN2>;
 	ep-device-type = <EP_BCM_WIFI>;
 	perst-delay-us = <20000>;
