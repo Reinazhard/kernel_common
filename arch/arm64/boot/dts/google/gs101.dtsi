@@ -1111,6 +1111,155 @@
 
 	};
 
+	gs_governor_memlat: gs-governor-memlat {
+		compatible = "google,gs_governor_memlat";
+
+		primary_vote_config {
+			vote_name = "memlat";
+			pm_qos_class = <PM_QOS_BUS_THROUGHPUT>;
+		};
+
+		governor_config {
+			gs_memlat_cl0 {
+				cpulist = <&cpu0>, <&cpu1>, <&cpu2>, <&cpu3>;
+				ratio_ceil = <400>;
+				stall_floor = <3000>;
+				cpuidle_state_depth_threshold = <2>;
+
+				core-dev-table-latency =
+				/* CL0         MIF */
+				<  300000  421000 >,
+				<  574000  546000 >,
+				<  738000  676000 >,
+				<  930000  845000 >,
+				< 1098000 1014000 >,
+				< 1197000 1352000 >,
+				< 1328000 1539000 >,
+				< 1598000 1716000 >,
+				< 1803000 2028000 >;
+			};
+
+			gs_memlat_cl1 {
+				cpulist = <&cpu4>, <&cpu5>;
+				ratio_ceil = <2700>;
+				stall_floor = <2400>;
+				cpuidle_state_depth_threshold = <2>;
+
+				core-dev-table-latency =
+				/* CL1         MIF */
+				<  400000  421000 >,
+				<  553000  845000 >,
+				<  799000 1352000 >,
+				< 1024000 1539000 >,
+				< 1491000 1716000 >,
+				< 1836000 2028000 >,
+				< 2130000 2288000 >,
+				< 2253000 2730000 >;
+			};
+
+			gs_memlat_cl2 {
+				cpulist = <&cpu6>, <&cpu7>;
+				ratio_ceil = <3400>;
+				stall_floor = <500>;
+				cpuidle_state_depth_threshold = <2>;
+
+				core-dev-table-latency =
+				/* CL2         MIF */
+				<  500000  546000 >,
+				<  851000  676000 >,
+				< 1106000  845000 >,
+				< 1277000 1014000 >,
+				< 1426000 1352000 >,
+				< 1745000 1716000 >,
+				< 2048000 2028000 >,
+				< 2188000 3172000 >,
+				< 2507000 3172000 >,
+				< 2704000 3172000 >;
+			};
+		};
+	};
+
+	gs_perf_mon {
+		compatible = "google,gs_perf_mon";
+		param_ticks_per_counter_update = <2>;
+		client_update_backup_us = <10000>;
+		client_update_interval_us = <8000>;
+		gs_perf_cpu {
+			cpu0 {
+				cpu_idx = <0>;
+				pmu_events {
+					cyc-ev = <0x11>;
+					inst-ev = <0x08>;
+					l3-cachemiss-ev = <0xA2>;
+					stall-backend-mem-ev = <0x24>;
+				};
+			};
+			cpu1 {
+				cpu_idx = <1>;
+				pmu_events {
+					cyc-ev = <0x11>;
+					inst-ev = <0x08>;
+					l3-cachemiss-ev = <0xA2>;
+					stall-backend-mem-ev = <0x24>;
+				};
+			};
+			cpu2 {
+				cpu_idx = <2>;
+				pmu_events {
+					cyc-ev = <0x11>;
+					inst-ev = <0x08>;
+					l3-cachemiss-ev = <0xA2>;
+					stall-backend-mem-ev = <0x24>;
+				};
+			};
+			cpu3 {
+				cpu_idx = <3>;
+				pmu_events {
+					cyc-ev = <0x11>;
+					inst-ev = <0x08>;
+					l3-cachemiss-ev = <0xA2>;
+					stall-backend-mem-ev = <0x24>;
+				};
+			};
+			cpu4 {
+				cpu_idx = <4>;
+				pmu_events {
+					cyc-ev = <0x11>;
+					inst-ev = <0x08>;
+					l3-cachemiss-ev = <0xA2>;
+					stall-backend-mem-ev = <0x24>;
+				};
+			};
+			cpu5 {
+				cpu_idx = <5>;
+				pmu_events {
+					cyc-ev = <0x11>;
+					inst-ev = <0x08>;
+					l3-cachemiss-ev = <0xA2>;
+					stall-backend-mem-ev = <0x24>;
+				};
+			};
+			cpu6 {
+				cpu_idx = <6>;
+				pmu_events {
+					cyc-ev = <0x11>;
+					inst-ev = <0x08>;
+					l3-cachemiss-ev = <0xA2>;
+					stall-backend-mem-ev = <0x24>;
+				};
+			};
+			cpu7 {
+				cpu_idx = <7>;
+				pmu_events {
+					cyc-ev = <0x11>;
+					inst-ev = <0x08>;
+					l3-cachemiss-ev = <0xA2>;
+					stall-backend-mem-ev = <0x24>;
+				};
+			};
+		};
+	};
+
 	gs_memlat_devfreq {
 		compatible = "memlat-devfreq-root";
 		#address-cells = <2>;
