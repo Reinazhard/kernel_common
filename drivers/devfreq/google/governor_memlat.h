@@ -9,7 +9,6 @@
 #include <linux/kernel.h>
 #include <linux/devfreq.h>
 
-#if IS_ENABLED(CONFIG_ARM_MEMLAT_MON)
 enum common_ev_idx {
 	STALL_IDX,
 	L2D_CACHE_REFILL_IDX,
@@ -19,21 +18,6 @@ enum common_ev_idx {
 	CYCLE_IDX,
 	NUM_COMMON_EVS
 };
-#else
-enum common_ev_idx {
-	INST_IDX,
-	CYC_IDX,
-	STALL_IDX,
-	NUM_COMMON_EVS
-};
-
-#define INST_EV	0x08
-#define CYC_EV	0x11
-#define STALL_EV 0x24
-#define L3D_CACHE_REFILL_EV 0x2A
-
-#define to_mon(hwmon) container_of(hwmon, struct memlat_mon, hw)
-#endif
 
 /**
  * memlat cpuidle awareness state
@@ -119,38 +103,6 @@ struct memlat_hwmon {
 	struct core_dev_map *freq_map;
 	bool should_ignore_df_monitor;
 };
-
-#if IS_ENABLED(CONFIG_ARM_MEMLAT_MON_LEGACY)
-/**
- * struct memlat_mon - A specific consumer of cpu_grp generic counters.
- *
- * @is_active:                  Whether or not this mon is currently running
- *                              memlat.
- * @cpus:                       CPUs this mon votes on behalf of. Must be a
- *                              subset of @cpu_grp's CPUs. If no CPUs provided,
- *                              defaults to using all of @cpu_grp's CPUs.
- * @miss_ev_id:                 The event code corresponding to the @miss_ev
- *                              perf event. Will be 0 for compute.
- * @miss_ev:                    The cache miss perf event exclusive to this
- *                              mon. Will be NULL for compute.
- * @requested_update_ms:        The mon's desired polling rate. The lowest
- *                              @requested_update_ms of all mons determines
- *                              @cpu_grp's update_ms.
- * @hw:                         The memlat_hwmon struct corresponding to this
- *                              mon's specific memlat instance.
- * @cpu_grp:                    The cpu_grp who owns this mon.
- */
-struct memlat_mon {
-	bool			is_active;
-	cpumask_t		cpus;
-	unsigned int		miss_ev_id;
-	unsigned int		requested_update_ms;
-	struct event_data	*miss_ev;
-	struct memlat_hwmon	hw;
-
-	struct memlat_cpu_grp	*cpu_grp;
-};
-#endif
 
 #if IS_ENABLED(CONFIG_DEVFREQ_GOV_MEMLAT)
 int register_memlat(struct device *dev, struct memlat_hwmon *hw);

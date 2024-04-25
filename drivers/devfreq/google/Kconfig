@@ -8,17 +8,9 @@ config ARM_MEMLAT_MON
 	  This driver uses these counters to implement the APIs needed by
 	  the mem_latency devfreq governor.
 
-config ARM_MEMLAT_MON_LEGACY
-	  tristate "ARM CPU Memory Latency monitor hardware"
-	  help
-		The PMU present on these ARM cores allow for the use of counters to
-		monitor the memory latency characteristics of an ARM CPU workload.
-		This driver uses these counters to implement the APIs needed by
-		the mem_latency devfreq governor.
-
 config DEVFREQ_GOV_MEMLAT
 	tristate "HW monitor based governor for device BW"
-	depends on ARM_MEMLAT_MON || ARM_MEMLAT_MON_LEGACY
+	depends on ARM_MEMLAT_MON
 	help
 	  HW monitor based governor for device to DDR bandwidth voting.
 	  This governor sets the CPU BW vote based on stats obtained from memalat
@@ -28,7 +20,7 @@ config DEVFREQ_GOV_MEMLAT
 
 config MEMLAT_DEVFREQ
 	tristate "HW monitor based DEVFREQ driver for device BW"
-	depends on ARM_MEMLAT_MON || ARM_MEMLAT_MON_LEGACY
+	depends on ARM_MEMLAT_MON
 	help
 	  This adds the DEVFREQ driver for memory latency goverors.
 

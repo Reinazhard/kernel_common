@@ -13,7 +13,6 @@ aoc_usb_driver.ko
 aoc_uwb_platform_drv.ko
 aoc_uwb_service_dev.ko
 arm-cmn.ko
-arm-memlat-mon-legacy.ko
 at24.ko
 audiometrics.ko
 bc_max77759.ko
@@ -70,7 +69,6 @@ google-cpm.ko
 google_bcl_legacy.ko
 google_dock.ko
 google_dual_batt_gauge.ko
-governor_memlat.ko
 gpu_cooling.ko
 gs-chipid.ko
 gs_acpm.ko
@@ -109,7 +107,6 @@ max77779_pmic.ko
 max77779_pmic_irq.ko
 max77779_pmic_pinctrl.ko
 max77779_pmic_sgpio.ko
-memlat-devfreq.ko
 odpm_legacy.ko
 open-dice.ko
 p9221.ko
