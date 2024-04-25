@@ -661,17 +661,14 @@ static int initialize_cpu_data_info(struct device *dev, struct device_node *cpu_
 	amu_node = of_get_child_by_name(cpu_node, "amu_events");
 	ret = parse_perf_counters(dev, amu_node, cpu_event_data, AMU);
 	if (ret) {
-		dev_err(dev, "Couldn't parse amu_node, skipping performance monitoring.\n");
-		return ret;
+		dev_info(dev, "Couldn't parse amu_node. Skipping..\n");
 	}
 
 	/* Check that every event is supported from at least one of PMU or AMU. */
 	for (event_idx = 0; event_idx < PERF_NUM_COMMON_EVS; event_idx++) {
 		if (cpu_event_data[event_idx].raw_event_id == UINT_MAX) {
-			dev_err(dev, "Event at index %u is unsupported. Stopping probe.\n",
+			dev_info(dev, "Event at index %u is not specified. Skipping..\n",
 				event_idx);
-			ret = -EINVAL;
-			break;
 		}
 	}
 
