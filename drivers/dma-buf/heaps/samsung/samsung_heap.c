@@ -372,11 +372,7 @@ void trusty_register_dma_buf_callbacks(void)
 
 unsigned long dma_heap_inuse_pages(void)
 {
-#if IS_ENABLED(CONFIG_DMABUF_HEAPS_GOOGLE_GCMA)
 	return dma_heap_system_inuse_pages() + dma_heap_gcma_inuse_pages();
-#else
-	return dma_heap_system_inuse_pages();
-#endif
 }
 EXPORT_SYMBOL_GPL(dma_heap_inuse_pages);
 
