@@ -120,6 +120,7 @@ pca9468.ko
 pcie-exynos-gs.ko
 pcie-exynos-gs101-rc-cal.ko
 phy-exynos-mipi-dsim.ko
+perf_trace_counters.ko
 phy-exynos-mipi.ko
 phy-exynos-usbdrd-super.ko
 pinctrl-exynos-gs.ko
