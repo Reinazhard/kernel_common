@@ -3696,7 +3696,7 @@ kfree_rcu_shrink_count(struct shrinker *shrink, struct shrink_control *sc)
 		atomic_set(&krcp->backoff_page_cache_fill, 1);
 	}
 
-	return count == 0 ? SHRINK_EMPTY : count;
+	return count;
 }
 
 static unsigned long
