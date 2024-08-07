@@ -268,8 +268,6 @@ static int __noreturn pt_resize_thread(void *data)
 			} while (ret);
 		}
 	}
-
-	return 0;
 }
 
 /*
