@@ -526,8 +526,8 @@ static int vh_sched_init(void)
 		return ret;
 
 	// Disable TTWU_QUEUE.
-	sysctl_sched_features &= ~(1UL << __SCHED_FEAT_TTWU_QUEUE);
-	static_key_disable(&sched_feat_keys[__SCHED_FEAT_TTWU_QUEUE]);
+//	sysctl_sched_features &= ~(1UL << __SCHED_FEAT_TTWU_QUEUE);
+//	static_key_disable(&sched_feat_keys[__SCHED_FEAT_TTWU_QUEUE]);
 
 	return 0;
 }
