@@ -162,3 +162,7 @@ x509.genkey
 
 # Documentation toolchain
 sphinx_*/
+
+scripts/dtc/dtc-aosp/*
+scripts/libufdt/*
+out/*
