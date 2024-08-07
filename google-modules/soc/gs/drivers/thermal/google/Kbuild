@@ -1,0 +1,19 @@
+
+ccflags-y += -I$(srctree)/drivers/thermal
+
+obj-$(CONFIG_GOOGLE_BCL)	+= google_bcl.o
+google_bcl-y			+= google_bcl_core.o
+google_bcl-y			+= google_bcl_sysfs.o
+google_bcl-y			+= google_bcl_util.o
+google_bcl-y			+= google_bcl_qos.o
+google_bcl-y			+= google_bcl_debugfs.o
+obj-$(CONFIG_GOOGLE_BCL_LEGACY)	+= google_bcl_legacy.o
+obj-$(CONFIG_GSOC_PMIC_THERMAL_CAMBRIA)	+= s2mpg15_spmic_thermal.o
+
+ifneq ($(CONFIG_MFD_S2MPG13),)
+obj-$(CONFIG_GSOC_PMIC_THERMAL)	+= s2mpg13_spmic_thermal.o
+endif
+
+ifneq ($(CONFIG_MFD_S2MPG11),)
+obj-$(CONFIG_GSOC_PMIC_THERMAL)	+= gs101_spmic_thermal.o
+endif
