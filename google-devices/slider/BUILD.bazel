@@ -1,0 +1,554 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+load("@bazel_skylib//lib:paths.bzl", "paths")
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+load("//aosp:modules.bzl", "COMMON_GKI_MODULES_LIST")
+load("//build/bazel_common_rules/dist:dist.bzl", "copy_to_dist_dir")
+load("//build/kernel/kleaf:constants.bzl", "aarch64_outs")
+load(
+    "//build/kernel/kleaf:kernel.bzl",
+    "gki_artifacts",
+    "kernel_abi",
+    "kernel_build",
+    "kernel_images",
+    "kernel_module_group",
+    "kernel_modules_install",
+    "kernel_unstripped_modules_archive",
+    "merged_kernel_uapi_headers",
+)
+load(
+    "//private/google-modules/soc/gs:device_build_configs.bzl",
+    "device_build_configs",
+    "extracted_system_dlkm",
+    "lto_dependant_kernel_module",
+)
+
+_GKI_AARCH64_MAKE_GOALS = [
+    "Image",
+    "Image.lz4",
+    "Image.gz",
+    "modules",
+]
+
+device_build_configs(
+    name = "build.config.slider",
+    base_build_config = ":build.config.slider",
+    device_name = "slider",
+)
+
+kernel_build(
+    name = "slider_gki",
+    srcs = glob([
+        "build.config.*",
+        "slider*.fragment",
+    ]) + [
+        "//aosp-staging:kernel_aarch64_sources",
+        "//private/google-modules/soc/gs:build.config.slider.blktest",
+        "//private/google-modules/soc/gs:build.config.slider.debug_api",
+        "//private/google-modules/soc/gs:build.config.slider.debug_kmemleak",
+        "//private/google-modules/soc/gs:build.config.slider.debug_locking",
+        "//private/google-modules/soc/gs:build.config.slider.debug_memory",
+        "//private/google-modules/soc/gs:build.config.slider.debug_memory_accounting",
+        "//private/google-modules/soc/gs:build.config.slider.kasan",
+        "//private/google-modules/soc/gs:build.config.slider.khwasan",
+    ],
+    outs = aarch64_outs,
+    additional_kmi_symbol_lists = ["//aosp-staging:android/abi_gki_aarch64_pixel"],
+    build_config = ":gki_build_config",
+    collect_unstripped_modules = True,
+    # For building system_dlkm (b/241855743)
+    # Device fragments need to add: '# CONFIG_MODULE_SIG_ALL is not set'
+    implicit_outs = [
+        "scripts/sign-file",
+        "certs/signing_key.pem",
+        "certs/signing_key.x509",
+    ],
+    kmi_symbol_list = "//aosp-staging:android/abi_gki_aarch64",
+    kmi_symbol_list_strict_mode = False,
+    make_goals = _GKI_AARCH64_MAKE_GOALS,
+    module_implicit_outs = COMMON_GKI_MODULES_LIST,
+    strip_modules = True,
+    trim_nonlisted_kmi = True,
+)
+
+kernel_modules_install(
+    name = "slider_gki_modules_install",
+    kernel_build = "slider_gki",
+    kernel_modules = [],
+)
+
+kernel_images(
+    name = "slider_gki_images",
+    build_system_dlkm = True,
+    kernel_build = "slider_gki",
+    kernel_modules_install = "slider_gki_modules_install",
+)
+
+gki_artifacts(
+    name = "slider_gki_artifacts",
+    arch = "arm64",
+    boot_img_sizes = {
+        # Assume BUILD_GKI_BOOT_IMG_SIZE is the following
+        "": "67108864",
+        # Assume BUILD_GKI_BOOT_IMG_LZ4_SIZE is the following
+        "lz4": "53477376",
+        # Assume BUILD_GKI_BOOT_IMG_GZ_SIZE is the following
+        "gz": "47185920",
+    },
+    kernel_build = "slider_gki",
+)
+
+filegroup(
+    name = "gki_aarch64_boot_lz4",
+    srcs = select({
+        "//private/google-modules/soc/gs:gki_aosp": ["//aosp:kernel_aarch64_gki_artifacts_download_or_build"],
+        "//private/google-modules/soc/gs:gki_aosp_staging": [":slider_gki_artifacts"],
+    }),
+)
+
+# TODO(b/285605996): Use hermetic_genrule
+genrule(
+    name = "gki_aarch64_boot",
+    srcs = [":gki_aarch64_boot_lz4"],
+    outs = ["boot.img"],
+    cmd = """
+        for f in $(locations :gki_aarch64_boot_lz4); do
+            if [[ "$${f##*/}" == "boot-lz4.img" ]]; then
+                $(location //build/kernel:hermetic-tools/mv) $$f $(location boot.img)
+                break
+            fi
+        done
+    """,
+    tools = ["//build/kernel:hermetic-tools/mv"],
+)
+
+_PIXEL_MAKE_GOALS = [
+    "modules",
+    "dtbs",
+]
+
+_SOC_REVS = [
+    "a0",
+    "b0",
+]
+
+_slider_DTBOS = [
+    # Sync with build.config.slider
+    "google-dts-base/gs101-slider.dtbo",
+    "google-dts-base/gs101-slider2.dtbo",
+    "google-dts-base/gs101-slider2-o6r4.dtbo",
+    "google-dts-base/gs101-whitefin.dtbo",
+    "google-dts-base/gs101-whitefin2.dtbo",
+    "google-dts-base/gs101-whitefin2v2.dtbo",
+    "google-dts-base/gs101-oriole.dtbo",
+    "google-dts-base/gs101-oriole-evt1_1.dtbo",
+    "google-dts-base/gs101-oriole-evt-wingboard.dtbo",
+    "google-dts-base/gs101-oriole-evt1.dtbo",
+    "google-dts-base/gs101-oriole-proto1.dtbo",
+    "google-dts-base/gs101-oriole-proto1_1.dtbo",
+    "google-dts-base/gs101-raven.dtbo",
+    "google-dts-base/gs101-raven-evt1_1.dtbo",
+    "google-dts-base/gs101-raven-evt-wingboard.dtbo",
+    "google-dts-base/gs101-raven-evt1.dtbo",
+    "google-dts-base/gs101-raven-proto1.dtbo",
+    "google-dts-base/gs101-raven-proto1_1.dtbo",
+]
+
+kernel_module_group(
+    name = "slider_ext_modules",
+    srcs = [
+        # keep sorted
+        "//private/devices/google/slider:gs101_soc.slider",
+        "//private/google-modules/amplifiers/audiometrics",
+        "//private/google-modules/amplifiers/cs35l41",
+        "//private/google-modules/amplifiers/cs40l25",
+        "//private/google-modules/aoc",
+        "//private/google-modules/aoc/alsa",
+        "//private/google-modules/aoc/usb:aoc.usb",
+        "//private/google-modules/bluetooth/broadcom:bluetooth.broadcom",
+        "//private/google-modules/bms",
+        "//private/google-modules/bms/misc:bms-misc",
+        "//private/google-modules/display/samsung:display.samsung",
+        "//private/google-modules/edgetpu/abrolhos/drivers/edgetpu:edgetpu.abrolhos",
+        "//private/google-modules/gps/broadcom/bcm47765",
+        "//private/google-modules/gpu/mali_kbase",
+        "//private/google-modules/gpu/mali_pixel",
+        "//private/google-modules/lwis",
+        "//private/google-modules/nfc",
+        "//private/google-modules/power/reset",
+        "//private/google-modules/touch/common:touch.common",
+        "//private/google-modules/touch/fts/ftm5",
+        "//private/google-modules/touch/sec",
+        "//private/google-modules/trusty",
+        "//private/google-modules/uwb/qorvo/dw3000/kernel:uwb.dw3000",
+        "//private/google-modules/video/gchips:video.gchips",
+        "//private/google-modules/wlan/bcm4389:bcmdhd4389",
+    ],
+)
+
+kernel_build(
+    name = "gs101_slider",
+    srcs = glob([
+        "build.config.*",
+        "dts/**",
+        "slider*.fragment",
+    ]) + [
+        # keep sorted
+        "//private/google-modules/bms/misc:bms-misc.kconfig",
+        "//private/google-modules/power/reset:reset.kconfig",
+        "//private/google-modules/soc/gs:arch/arm64/configs/slider_gki.fragment",
+        "//private/google-modules/soc/gs:build.config.gs101",
+        "//private/google-modules/soc/gs:build.config.slider.blktest",
+        "//private/google-modules/soc/gs:build.config.slider.debug_api",
+        "//private/google-modules/soc/gs:build.config.slider.debug_kmemleak",
+        "//private/google-modules/soc/gs:build.config.slider.debug_locking",
+        "//private/google-modules/soc/gs:build.config.slider.debug_memory",
+        "//private/google-modules/soc/gs:build.config.slider.debug_memory_accounting",
+        "//private/google-modules/soc/gs:build.config.slider.kasan",
+        "//private/google-modules/soc/gs:build.config.slider.khwasan",
+        "//private/google-modules/soc/gs:gs_soc.kconfig",
+        "//private/google-modules/touch/common:touch.common.kconfig",
+        "//private/google-modules/touch/fts/ftm5:ftm5.kconfig",
+        "//private/google-modules/touch/sec:sec.kconfig",
+        "//private/google-modules/trusty:trusty.kconfig",
+        "//private/google-modules/wlan/wlan_ptracker:wlan_ptracker.kconfig",
+    ] + select({
+        "//private/google-modules/soc/gs:gki_aosp": ["//aosp:kernel_aarch64_sources"],
+        "//private/google-modules/soc/gs:gki_aosp_staging": ["//aosp-staging:kernel_aarch64_sources"],
+    }),
+    outs = [
+        "google-dts-base/gs101-{}.dtb".format(soc_rev)
+        for soc_rev in _SOC_REVS
+    ] + _slider_DTBOS,
+    base_kernel = select({
+        "//private/google-modules/soc/gs:gki_aosp": "//aosp:kernel_aarch64_download_or_build",
+        "//private/google-modules/soc/gs:gki_aosp_staging": ":slider_gki",
+    }),
+    build_config = ":device_build_config",
+    collect_unstripped_modules = True,
+    dtstree = "//private/devices/google/slider/dts:slider.dt",
+    kconfig_ext = "//private/google-modules/soc/gs:Kconfig.ext",
+    kmi_symbol_list = select({
+        "//private/google-modules/soc/gs:gki_aosp": "//aosp:android/abi_gki_aarch64_pixel",
+        "//private/google-modules/soc/gs:gki_aosp_staging": "//aosp-staging:android/abi_gki_aarch64_pixel",
+    }),
+    make_goals = _PIXEL_MAKE_GOALS,
+    module_outs = [
+        # keep sorted
+        "drivers/i2c/i2c-dev.ko",
+        "drivers/misc/eeprom/at24.ko",
+        "drivers/misc/open-dice.ko",
+        "drivers/perf/arm-cmn.ko",
+        "drivers/perf/arm_dsu_pmu.ko",
+        "drivers/scsi/sg.ko",
+        "drivers/spi/spidev.ko",
+        "drivers/watchdog/softdog.ko",
+        "net/mac80211/mac80211.ko",
+        "net/wireless/cfg80211.ko",
+    ],
+    strip_modules = True,
+)
+
+kernel_abi(
+    name = "gs101_slider_abi",
+    kernel_build = ":gs101_slider",
+    kernel_modules = [":slider_ext_modules"],
+    kmi_symbol_list_add_only = True,
+    module_grouping = False,
+)
+
+lto_dependant_kernel_module(
+    name = "gs101_soc.slider",
+    srcs = [
+        "//private/google-modules/soc/gs:gs_soc_sources",
+    ],
+    outs = [
+        # keep sorted
+        "drivers/block/zram/zcomp_eh.ko",
+        "drivers/block/zram/zram_gs.ko",
+        "drivers/bts/bts.ko",
+        "drivers/char/hw_random/exyswd-rng.ko",
+        "drivers/clk/gs/clk_exynos_gs.ko",
+        "drivers/clocksource/exynos_mct.ko",
+        "drivers/cpufreq/exynos-acme.ko",
+        "drivers/devfreq/google/exynos_devfreq.ko",
+        "drivers/dma-buf/heaps/samsung/samsung_dma_heap.ko",
+        "drivers/dma/pl330.ko",
+        "drivers/dma/samsung-dma.ko",
+        "drivers/gpu/exynos/g2d/g2d.ko",
+        "drivers/i2c/busses/i2c-acpm.ko",
+        "drivers/i2c/busses/i2c-exynos5.ko",
+        "drivers/iio/power/odpm_legacy.ko",
+        "drivers/input/fingerprint/goodixfp.ko",
+        "drivers/input/keycombo.ko",
+        "drivers/input/keydebug.ko",
+        "drivers/input/misc/vl53l1/stmvl53l1.ko",
+        "drivers/iommu/samsung-iommu-group.ko",
+        "drivers/iommu/samsung-secure-iova.ko",
+        "drivers/iommu/samsung_iommu.ko",
+        "drivers/media/platform/exynos/mfc/exynos_mfc.ko",
+        "drivers/media/platform/exynos/smfc/smfc.ko",
+        "drivers/mfd/s2mpg10-mfd.ko",
+        "drivers/mfd/s2mpg11-mfd.ko",
+        "drivers/mfd/s2mpg1x-gpio-gs101.ko",
+        "drivers/mfd/slg51000-core.ko",
+        "drivers/misc/gsc-spi.ko",
+        "drivers/misc/s5910/s5910.ko",
+        "drivers/misc/sbb-mux/sbb-mux.ko",
+        "drivers/misc/sscoredump/sscoredump.ko",
+        "drivers/pci/controller/dwc/pcie-exynos-gs.ko",
+        "drivers/pci/controller/dwc/pcie-exynos-gs101-rc-cal.ko",
+        "drivers/performance/gs_perf_mon/gs_perf_mon.ko",
+        "drivers/performance/lat_governors/gs_governor_dsulat.ko",
+        "drivers/performance/lat_governors/gs_governor_memlat.ko",
+        "drivers/performance/lat_governors/gs_governor_utils.ko",
+        "drivers/phy/samsung/phy-exynos-mipi.ko",
+        "drivers/phy/samsung/phy-exynos-mipi-dsim.ko",
+        "drivers/phy/samsung/phy-exynos-usbdrd-super.ko",
+        "drivers/pinctrl/gs/pinctrl-exynos-gs.ko",
+        "drivers/pinctrl/pinctrl-slg51000.ko",
+        "drivers/power/reset/debug-reboot.ko",
+        "drivers/regulator/max77826-gs-regulator.ko",
+        "drivers/regulator/pmic_class.ko",
+        "drivers/regulator/s2mpg10-powermeter.ko",
+        "drivers/regulator/s2mpg10-regulator.ko",
+        "drivers/regulator/s2mpg11-powermeter.ko",
+        "drivers/regulator/s2mpg11-regulator.ko",
+        "drivers/regulator/slg51000-regulator.ko",
+        "drivers/rtc/rtc-s2mpg10.ko",
+        "drivers/soc/google/acpm/acpm_flexpmu_dbg.ko",
+        "drivers/soc/google/acpm/acpm_mbox_test.ko",
+        "drivers/soc/google/acpm/gs_acpm.ko",
+        "drivers/soc/google/acpm/power_stats.ko",
+        "drivers/soc/google/bcm_dbg.ko",
+        "drivers/soc/google/boot_control/boot_control_sysfs.ko",
+        "drivers/soc/google/cal-if/cmupmucal.ko",
+        "drivers/soc/google/cpif/boot_device_spi.ko",
+        "drivers/soc/google/cpif/cp_thermal_zone.ko",
+        "drivers/soc/google/cpif/cpif.ko",
+        "drivers/soc/google/cpif/cpif_page.ko",
+        "drivers/soc/google/cpif/shm_ipc.ko",
+        "drivers/soc/google/dbgcore-dump.ko",
+        "drivers/soc/google/debug/debug-snapshot-debug-kinfo.ko",
+        "drivers/soc/google/debug/dss.ko",
+        "drivers/soc/google/debug/ehld.ko",
+        "drivers/soc/google/debug/exynos-adv-tracer.ko",
+        "drivers/soc/google/debug/exynos-adv-tracer-s2d.ko",
+        "drivers/soc/google/debug/exynos-coresight.ko",
+        "drivers/soc/google/debug/exynos-coresight-etm.ko",
+        "drivers/soc/google/debug/exynos-debug-test.ko",
+        "drivers/soc/google/debug/exynos-ecc-handler.ko",
+        "drivers/soc/google/debug/itmon.ko",
+        "drivers/soc/google/debug/pixel-boot-metrics.ko",
+        "drivers/soc/google/debug/pixel-debug-test.ko",
+        "drivers/soc/google/debug/pixel-suspend-diag.ko",
+        "drivers/soc/google/debug/sjtag-driver.ko",
+        "drivers/soc/google/ect_parser.ko",
+        "drivers/soc/google/eh/eh.ko",
+        "drivers/soc/google/exynos-bcm_dbg-dump.ko",
+        "drivers/soc/google/exynos-cpuhp.ko",
+        "drivers/soc/google/exynos-cpupm.ko",
+        "drivers/soc/google/exynos-dm.ko",
+        "drivers/soc/google/exynos-pd.ko",
+        "drivers/soc/google/exynos-pd-dbg.ko",
+        "drivers/soc/google/exynos-pd_el3.ko",
+        "drivers/soc/google/exynos-pd_hsi0.ko",
+        "drivers/soc/google/exynos-pm.ko",
+        "drivers/soc/google/exynos-pmu-if.ko",
+        "drivers/soc/google/exynos-seclog.ko",
+        "drivers/soc/google/exynos_pm_qos.ko",
+        "drivers/soc/google/gcma/gcma.ko",
+        "drivers/soc/google/gs-chipid.ko",
+        "drivers/soc/google/gsa/gsa.ko",
+        "drivers/soc/google/gsa/gsa_gsc.ko",
+        "drivers/soc/google/hardlockup-debug.ko",
+        "drivers/soc/google/hardlockup-watchdog.ko",
+        "drivers/soc/google/perf_trace_counters.ko",
+        "drivers/soc/google/pixel_stat/mm/pixel_stat_mm.ko",
+        "drivers/soc/google/pixel_stat/pixel_stat_sysfs.ko",
+        "drivers/soc/google/pkvm-s2mpu/pkvm-s2mpu/pkvm-s2mpu.ko",
+        "drivers/soc/google/pt/slc_acpm.ko",
+        "drivers/soc/google/pt/slc_dummy.ko",
+        "drivers/soc/google/pt/slc_pmon.ko",
+        "drivers/soc/google/pt/slc_pt.ko",
+        "drivers/soc/google/s2mpu/s2mpu.ko",
+        "drivers/soc/google/vh/kernel/cgroup/vh_cgroup.ko",
+        "drivers/soc/google/vh/kernel/fs/vh_fs.ko",
+        "drivers/soc/google/vh/kernel/metrics/pixel_metrics.ko",
+        "drivers/soc/google/vh/kernel/mm/vh_mm.ko",
+        "drivers/soc/google/vh/kernel/pixel_em/pixel_em.ko",
+        "drivers/soc/google/vh/kernel/sched/sched_tp.ko",
+        "drivers/soc/google/vh/kernel/sched/vh_preemptirq_long.ko",
+        "drivers/soc/google/vh/kernel/sched/vh_sched.ko",
+        "drivers/soc/google/vh/kernel/systrace.ko",
+        "drivers/soc/google/vh/kernel/thermal/vh_thermal.ko",
+        "drivers/spi/spi-s3c64xx.ko",
+        "drivers/spmi/spmi_bit_bang.ko",
+        "drivers/thermal/google/google_bcl_legacy.ko",
+        "drivers/thermal/google/gs101_spmic_thermal.ko",
+        "drivers/thermal/samsung/gpu_cooling.ko",
+        "drivers/thermal/samsung/gs_thermal.ko",
+        "drivers/tty/serial/exynos_tty.ko",
+        "drivers/ufs/ufs-exynos-gs.ko",
+        "drivers/usb/dwc3/dwc3-exynos-usb.ko",
+        "drivers/usb/gadget/function/usb_f_dm.ko",
+        "drivers/usb/gadget/function/usb_f_dm1.ko",
+        "drivers/usb/gadget/function/usb_f_etr_miu.ko",
+        "drivers/usb/gadget/function/usb_f_rndis.ko",
+        "drivers/usb/host/xhci-exynos.ko",
+        "drivers/usb/typec/tcpm/google/bc_max77759.ko",
+        "drivers/usb/typec/tcpm/google/max77759_contaminant.ko",
+        "drivers/usb/typec/tcpm/google/max77759_helper.ko",
+        "drivers/usb/typec/tcpm/google/slg46826.ko",
+        "drivers/usb/typec/tcpm/google/tcpci_fusb307.ko",
+        "drivers/usb/typec/tcpm/google/tcpci_max77759.ko",
+        "drivers/usb/typec/tcpm/google/usb_psy.ko",
+        "drivers/usb/typec/tcpm/google/usbc_cooling_dev.ko",
+        "drivers/watchdog/s3c2410_wdt.ko",
+    ],
+    kernel_build = "//private/google-modules/soc/gs:gs_kernel_build",
+    lto_outs = [
+        "drivers/ufs/ufs-pixel-fips140.ko",
+    ],
+    makefile = ["//private/google-modules/soc/gs:Makefile"],
+    visibility = [
+        # keep sorted
+        "//private/devices/google:__subpackages__",
+        "//private/google-modules:__subpackages__",
+    ],
+    deps = [
+        "//private/google-modules/bms/misc:bms-misc",
+        "//private/google-modules/trusty",
+    ],
+)
+
+kernel_modules_install(
+    name = "gs101_slider_modules_install",
+    kernel_build = ":gs101_slider",
+    kernel_modules = [":slider_ext_modules"],
+)
+
+merged_kernel_uapi_headers(
+    name = "gs101_slider_merged_uapi_headers",
+    kernel_build = ":gs101_slider",
+    kernel_modules = [":slider_ext_modules"],
+)
+
+kernel_unstripped_modules_archive(
+    name = "gs101_slider_unstripped_modules_archive",
+    kernel_build = ":gs101_slider",
+    kernel_modules = [":slider_ext_modules"],
+)
+
+# TODO(b/285605996): Use hermetic_genrule
+genrule(
+    name = "vendor_boot_modules.slider-cat",
+    srcs = [
+        "vendor_boot_modules.slider",
+        "//build/kernel:hermetic-tools/cat",
+        "//private/google-modules/soc/gs:vendor_boot_modules.slider",
+    ],
+    outs = [
+        "vendor_boot_modules.concat",
+    ],
+    cmd = """
+        cat $(location vendor_boot_modules.slider) \\
+            $(location //private/google-modules/soc/gs:vendor_boot_modules.slider) \\
+            > $@
+    """,
+    tools = ["//build/kernel:hermetic-tools/cat"],
+)
+
+# Don't load the zram GKI module
+_GKI_MODULES = [m for m in COMMON_GKI_MODULES_LIST if not m.endswith("zram.ko")]
+
+write_file(
+    name = "system_dlkm_modules_list",
+    out = "system_dlkm_modules_list.slider",
+    content = _GKI_MODULES,
+)
+
+kernel_images(
+    name = "gs101_slider_images",
+    base_kernel_images = select({
+        "//private/google-modules/soc/gs:gki_aosp": "//aosp:kernel_aarch64_images_download_or_build",
+        "//private/google-modules/soc/gs:gki_aosp_staging": ":slider_gki_images",
+    }),
+    boot_image_outs = ["dtb.img"],
+    build_boot = False,
+    build_dtbo = True,
+    build_initramfs = True,
+    build_system_dlkm = True,
+    build_vendor_boot = True,
+    build_vendor_dlkm = True,
+    dedup_dlkm_modules = True,
+    dtbo_srcs = [":gs101_slider/" + file for file in _slider_DTBOS],
+    kernel_build = ":gs101_slider",
+    kernel_modules_install = ":gs101_slider_modules_install",
+    # Keep the following in sync with build.config.slider:
+    modules_list = ":vendor_boot_modules.slider-cat",
+    system_dlkm_modules_list = ":system_dlkm_modules_list",
+    system_dlkm_props = "//private/google-modules/soc/gs:system_dlkm.props.zuma",
+    vendor_dlkm_etc_files = ["//private/devices/google/slider:insmod_cfgs"],
+    vendor_dlkm_modules_blocklist = "//private/google-modules/soc/gs:vendor_dlkm.blocklist.slider",
+    # No MODULES_BLOCKLIST
+    vendor_dlkm_modules_list = "//private/google-modules/soc/gs:vendor_dlkm_modules.slider",
+    vendor_dlkm_props = "//private/google-modules/soc/gs:vendor_dlkm.props.zuma",
+    # VENDOR_RAMDISK_BINARY
+    vendor_ramdisk_binaries = ["//prebuilts/boot-artifacts/ramdisks:vendor_ramdisk-oriole.img"],
+    deps = [
+        # Keep the following in sync with (vendor|system)_dlkm.props.zuma:
+        # selinux_fc
+        "//prebuilts/boot-artifacts/selinux:file_contexts",
+        "//prebuilts/boot-artifacts/selinux:system_file_contexts",
+    ],
+)
+
+filegroup(
+    name = "insmod_cfgs",
+    srcs = glob([
+        "insmod_cfg/*.cfg",
+    ]),
+)
+
+_gs101_slider_dist_targets = [
+    # Device-specific artifacts
+    ":gs101_slider",
+    ":gs101_slider_modules_install",
+    ":gs101_slider_merged_uapi_headers",
+    ":gs101_slider_images",
+    ":gki_aarch64_boot",
+    # TODO: support running ufdt_apply_overlay in a loop on each DTBO
+    ":gs101_slider_unstripped_modules_archive",
+    ":insmod_cfgs",
+    ":gs101_slider_extracted_system_dlkm",
+] + select({
+    "//private/google-modules/soc/gs:gki_aosp": [
+        "//aosp:android/abi_gki_aarch64_pixel",
+        "//aosp:kernel_aarch64_download_or_build",
+        "//aosp:kernel_aarch64_headers_download_or_build",
+    ],
+    "//private/google-modules/soc/gs:gki_aosp_staging": [
+        "slider_gki",
+        "slider_gki_headers",
+        "//aosp-staging:android/abi_gki_aarch64_pixel",
+        "//build/kernel:gki_certification_tools",
+    ],
+})
+
+extracted_system_dlkm(
+    name = "gs101_slider_extracted_system_dlkm",
+    gki_modules = [paths.basename(m) for m in _GKI_MODULES],
+    images = select({
+        "//private/google-modules/soc/gs:gki_aosp": "//aosp:kernel_aarch64_images_download_or_build",
+        "//private/google-modules/soc/gs:gki_aosp_staging": ":slider_gki_images",
+    }),
+)
+
+copy_to_dist_dir(
+    name = "gs101_slider_dist",
+    data = _gs101_slider_dist_targets,
+    dist_dir = "out/slider/dist",
+    flat = True,
+    log = "info",
+)
