@@ -97,6 +97,11 @@ ifneq ($(userprogs),)
 include $(srctree)/scripts/Makefile.userprogs
 endif
 
+# Do not include dtbo rules unless needed
+ifneq ($(gs101_raviole_overlays),)
+include scripts/Makefile.dtboinst
+endif
+
 ifndef obj
 $(warning kbuild: Makefile.build is included improperly)
 endif

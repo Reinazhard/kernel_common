@@ -396,6 +396,12 @@ $(obj)/%.dt.yaml: $(src)/%.dts $(DTC) $(DT_TMP_SCHEMA) FORCE
 
 dtc-tmp = $(subst $(comma),_,$(dot-target).dts.tmp)
 
+# mkdtimg
+#----------------------------------------------------------------------------
+MKDTIMG_FLAGS += --page_size=4096  --id=/:board_id --rev=/:board_rev
+quiet_cmd_mkdtimg = DTBOIMG $@
+cmd_mkdtimg = mkdtimg create $@ $(MKDTIMG_FLAGS) $(filter-out FORCE,$^)
+
 # Bzip2
 # ---------------------------------------------------------------------------
 
