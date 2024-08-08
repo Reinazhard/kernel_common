@@ -572,6 +572,7 @@ void xhci_free_container_ctx(struct xhci_hcd *xhci,
 	kfree(ctx);
 }
 
+#ifndef CONFIG_SOC_GOOGLE
 struct xhci_input_control_ctx *xhci_get_input_control_ctx(
 					      struct xhci_container_ctx *ctx)
 {
@@ -580,6 +581,7 @@ struct xhci_input_control_ctx *xhci_get_input_control_ctx(
 
 	return (struct xhci_input_control_ctx *)ctx->bytes;
 }
+#endif
 
 struct xhci_slot_ctx *xhci_get_slot_ctx(struct xhci_hcd *xhci,
 					struct xhci_container_ctx *ctx)
