@@ -851,9 +851,7 @@ int gs_perf_mon_driver_probe(struct platform_device *pdev)
 
 /* If any of the above steps failed, we need to free resources and unregister hooks. */
 err_cpuhp_init:
-	unregister_trace_android_vh_cpu_idle_exit(vendor_update_event_cpu_idle_exit, NULL);
 err_vh_idle_exit_register:
-	unregister_trace_android_vh_cpu_idle_enter(vendor_update_event_cpu_idle_enter, NULL);
 err_vh_idle_enter_register:
 err_client_data:
 	kthread_stop(perf_mon_metadata.perf_mon_task);
