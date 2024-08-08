@@ -19,7 +19,7 @@
 #include <soc/google/exynos-itmon.h>
 #endif
 
-#include "uapi/linux/bigo.h"
+#include "include/uapi/linux/bigo.h"
 
 #if IS_ENABLED(CONFIG_SLC_PARTITION_MANAGER)
 #include <soc/google/pt.h>
