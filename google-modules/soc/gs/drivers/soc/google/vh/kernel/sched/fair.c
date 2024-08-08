@@ -1483,6 +1483,7 @@ static void get_uclamp_on_nice(struct task_struct *p, enum uclamp_id clamp_id,
  * .sysctl_sched_tunable_scaling            : 0 (none)
  */
 #define sysctl_sched_min_granularity 3000000ULL
+#define sysctl_sched_latency 10000000ULL
 
 static u64 __sched_period(unsigned long nr_running)
 {
