@@ -29,5 +29,5 @@ obj-y += touch/common/
 obj-y += touch/fts/ftm5/
 obj-y += trusty/
 obj-y += uwb/qorvo/dw3000/kernel/
-obj-y += video/gchips/
-obj-y += wlan/bcmdhd/bcm4389/
+obj-y += video/gchip/
+obj-y += wlan/bcm4389/
