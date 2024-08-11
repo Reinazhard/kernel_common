@@ -4,7 +4,7 @@
 # This is based on the original scripts/dtc/Makefile, but has been revised to
 # work with an insane submodule situation.
 
-hostprogs-always-y := dtc-aosp
+hostprogs-always-y := dtc-aosp fdtoverlay
 
 dtc-aosp-objs	:= dtc.o flattree.o fstree.o data.o livetree.o treesource.o \
 		   srcpos.o checks.o util.o
@@ -15,6 +15,26 @@ dtc-aosp-objs	:= $(addprefix dtc/,$(dtc-aosp-objs))
 
 HOSTCFLAGS_DTC := -I$(srctree)/$(src)/dtc -I$(srctree)/$(src)/dtc/libfdt
 HOSTCFLAGS_DTC += -DNO_YAML
+
+HOSTCFLAGS_FDT := -I$(srctree)/$(src)/dtc/libfdt
+
+# The upstream project builds libfdt as a separate library.  We are choosing to
+# instead directly link the libfdt object files into fdtoverlay.
+libfdt-objs	:= fdt.o fdt_ro.o fdt_wip.o fdt_sw.o fdt_rw.o fdt_strerror.o fdt_empty_tree.o fdt_addresses.o fdt_overlay.o
+libfdt		= $(addprefix dtc/libfdt/,$(libfdt-objs))
+fdtoverlay-objs	:= $(libfdt) dtc/fdtoverlay.o dtc/util.o
+
+HOSTCFLAGS_dtc/libfdt/fdt.o := $(HOSTCFLAGS_FDT)
+HOSTCFLAGS_dtc/libfdt/fdt_ro.o := $(HOSTCFLAGS_FDT)
+HOSTCFLAGS_dtc/libfdt/fdt_wip.o := $(HOSTCFLAGS_FDT)
+HOSTCFLAGS_dtc/libfdt/fdt_sw.o := $(HOSTCFLAGS_FDT)
+HOSTCFLAGS_dtc/libfdt/fdt_rw.o := $(HOSTCFLAGS_FDT)
+HOSTCFLAGS_dtc/libfdt/fdt_strerror.o := $(HOSTCFLAGS_FDT)
+HOSTCFLAGS_dtc/libfdt/fdt_empty_tree.o := $(HOSTCFLAGS_FDT)
+HOSTCFLAGS_dtc/libfdt/fdt_addresses.o := $(HOSTCFLAGS_FDT)
+HOSTCFLAGS_dtc/libfdt/fdt_overlay.o := $(HOSTCFLAGS_FDT)
+HOSTCFLAGS_dtc/fdtoverlay.o := $(HOSTCFLAGS_FDT)
+HOSTCFLAGS_dtc/util.o := $(HOSTCFLAGS_FDT)
 
 HOSTCFLAGS_dtc/checks.o := $(HOSTCFLAGS_DTC)
 HOSTCFLAGS_dtc/data.o := $(HOSTCFLAGS_DTC)
